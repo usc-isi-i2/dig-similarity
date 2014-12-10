@@ -36,6 +36,9 @@ public class ElasticSearchHandler {
 	static Client esClient=null;
 	static TransportClient ts =null;
 	static SearchResponse searchResp = null;
+	static Properties prop=null;
+	static String indexName="";
+	static String docType="";
 	
 			
 	static Settings settings = null;
@@ -45,7 +48,7 @@ public class ElasticSearchHandler {
 	public static void Initialize(){
 		
 		
-		Properties prop = new Properties();
+		prop = new Properties();
 		InputStream input = ElasticSearchHandler.class.getClassLoader().getResourceAsStream(fileName);
 		try{
 			prop.load(input);
@@ -57,6 +60,9 @@ public class ElasticSearchHandler {
 			esClient = ts.addTransportAddress(new InetSocketTransportAddress(prop.getProperty("elasticsearchHost"), 
 																			Integer.parseInt(prop.getProperty("elasticsearchPort"))));
 			
+			indexName = prop.getProperty("indexName");
+			docType = prop.getProperty("docType");
+			
 		}catch(IOException ioe){
 			ioe.printStackTrace();
 		}
@@ -65,7 +71,7 @@ public class ElasticSearchHandler {
 	}
 	
 	
-	public static String PerformSimpleSearch(String uri,String indexName,String docType){
+	public static String PerformSimpleSearch(String uri){
 		
 		try{
 			Initialize();
@@ -104,10 +110,10 @@ public class ElasticSearchHandler {
 	}
 	
 	
-	public static String FindSimilar(String uri, String indexName, String docType,String sendBack){
+	public static String FindSimilar(String uri,String sendBack){
 		
 		try{
-			String searchSourceJson = PerformSimpleSearch(uri, indexName, docType);
+			String searchSourceJson = PerformSimpleSearch(uri);
 			
 			if(searchSourceJson!=null){
 				
