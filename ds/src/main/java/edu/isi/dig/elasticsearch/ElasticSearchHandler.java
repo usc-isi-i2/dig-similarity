@@ -1,4 +1,4 @@
-package elasticsearch;
+package edu.isi.dig.elasticsearch;
 
 import java.io.IOException;
 import java.io.InputStream;
