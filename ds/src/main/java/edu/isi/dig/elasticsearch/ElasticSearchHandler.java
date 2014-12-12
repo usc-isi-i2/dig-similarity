@@ -2,7 +2,10 @@ package edu.isi.dig.elasticsearch;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
@@ -18,8 +21,8 @@ import org.elasticsearch.index.query.MoreLikeThisQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.index.query.TermQueryBuilder;
 import org.elasticsearch.search.SearchHit;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+//import org.slf4j.Logger;
+//import org.slf4j.LoggerFactory;
 
 public class ElasticSearchHandler {
 	
@@ -43,7 +46,7 @@ public class ElasticSearchHandler {
 			
 	static Settings settings = null;
 	
-	private static Logger LOG = LoggerFactory.getLogger(ElasticSearchHandler.class);
+	//private static Logger LOG = LoggerFactory.getLogger(ElasticSearchHandler.class);
 	
 	public static void Initialize(){
 		
@@ -110,10 +113,54 @@ public class ElasticSearchHandler {
 	}
 	
 	
+	private static Map<String,Object> collectFeatures(String jsonWebPage){
+		
+		//AS per our current standards, should be a JSON object
+		JSONObject jSource = (JSONObject) JSONSerializer.toJSON(jsonWebPage);
+		Map<String, Object> mapFeatureCollection = new HashMap<String,Object>();
+		
+		//LOG.debug(jsonWebPage);
+		if(jSource.containsKey("hasFeatureCollection")){
+			
+			JSONObject jFeatureCollection = jSource.getJSONObject("hasFeatureCollection");
+			
+			@SuppressWarnings("unchecked")
+			Set<String> keys = jFeatureCollection.keySet();
+			
+			
+			
+			for(String key : keys){
+				
+				Object jFeature = jFeatureCollection.get(key);
+				
+				if(jFeature instanceof JSONObject){
+					if(((JSONObject) jFeature).containsKey("featureName") && ((JSONObject) jFeature).containsKey("featureValue")){
+						mapFeatureCollection.put(((JSONObject) jFeature).getString("featureName"), ((JSONObject) jFeature).get("featureValue"));
+					}
+				}else if(jFeature instanceof JSONArray){
+					
+					JSONArray JFeatures = (JSONArray) jFeature;
+					
+					for(int i=0; i < JFeatures.size();i++){
+						
+						JSONObject jTemp = JFeatures.getJSONObject(i);
+						
+						if(((JSONObject) jTemp).containsKey("featureName") && ((JSONObject) jTemp).containsKey("featureValue")){
+							mapFeatureCollection.put(((JSONObject) jTemp).getString("featureName"), ((JSONObject) jTemp).get("featureValue"));
+						}
+					}
+				}
+			}
+		}
+		return mapFeatureCollection;
+	}
+	
 	public static String FindSimilar(String uri,String sendBack){
 		
 		try{
 			String searchSourceJson = PerformSimpleSearch(uri);
+			
+			Map<String,Object> mapSourceFeatures = new HashMap<String, Object>();
 			
 			if(searchSourceJson!=null){
 				
@@ -126,6 +173,16 @@ public class ElasticSearchHandler {
 					if(jBodyPart.containsKey(TEXT)){
 						
 						String bodyText = jBodyPart.getString("text");
+						
+						//Create a map of <featureValues,featureNames>
+						mapSourceFeatures = collectFeatures(searchSourceJson);
+						
+						
+						/*Set<String> keys = mapSourceFeatures.keySet();
+						for(String key : keys){
+							LOG.debug(key + ":" + mapSourceFeatures.get(key));
+						}*/
+						
 						
 						//LOG.debug(bodyText);
 						MoreLikeThisQueryBuilder qb = QueryBuilders.moreLikeThisQuery("hasBodyPart.text.shingle_4")
@@ -148,14 +205,80 @@ public class ElasticSearchHandler {
 						
 						for(SearchHit sh : searchHit){
 							
-							JSONObject jTemp = (JSONObject)JSONSerializer.toJSON(sh.getSourceAsString());
-							String resultURI = jTemp.getString("uri");
-							LOG.debug("sendBAck:" + sendBack);
+							JSONArray additionalFeatures = new JSONArray();
+							JSONArray missingFeatures = new JSONArray();
+							JSONArray differentValuedFeatures = new JSONArray();
+							
+							
+							JSONObject jSimilarWebPage = (JSONObject)JSONSerializer.toJSON(sh.getSourceAsString());
+							
+							Map<String,Object> mapSimilarWPFC = collectFeatures(sh.getSourceAsString());
+							
+							Set<String> similarWebPagekeys =mapSimilarWPFC.keySet();
+							
+							for(String key : similarWebPagekeys){
+								
+								if(mapSourceFeatures.containsKey(key)){
+									
+									String sourceFeatureValue = String.valueOf(mapSourceFeatures.get(key));
+									String targetFeatureValue = String.valueOf(mapSimilarWPFC.get(key));
+									
+									//LOG.debug("Source:"+sourceFeatureValue);
+									//LOG.debug("Target:"+targetFeatureValue);
+									
+									if(!(sourceFeatureValue.equals(targetFeatureValue))){
+											JSONObject jTemp = new JSONObject();
+											jTemp.accumulate(key, mapSimilarWPFC.get(key));
+											differentValuedFeatures.add(jTemp);
+											
+											
+									}
+									
+								}
+								else{
+									//additional features
+									JSONObject jTemp = new JSONObject();
+									
+									if(key.equals("person_age")){//will regret harcoding it here
+										jTemp.accumulate(key, Integer.parseInt(String.valueOf(mapSimilarWPFC.get(key))));
+									}else{
+										jTemp.accumulate(key, mapSimilarWPFC.get(key));
+									}
+									
+									
+									additionalFeatures.add(jTemp);
+								}
+							}
+							
+							Set<String> sourceKeys = mapSourceFeatures.keySet();
+							
+							for(String key: sourceKeys){
+								if(!mapSimilarWPFC.containsKey(key)){
+									JSONObject jTemp = new JSONObject();
+									jTemp.accumulate(key, mapSourceFeatures.get(key));
+									missingFeatures.add(jTemp);
+								}
+							}
+							
+							String resultURI = jSimilarWebPage.getString("uri");
+							
 							if(sendBack.equalsIgnoreCase("all")){
-								jArray.add(jTemp);
+								jArray.add(new JSONObject().accumulate("WebPage",jSimilarWebPage));
 							}
 							else{
-								jArray.add(resultURI);
+								jArray.add(new JSONObject().accumulate("WebPage", resultURI));
+							}
+							
+							
+							if(additionalFeatures.size() > 0){
+								jArray.add(new JSONObject().accumulate("additionalFeatures", additionalFeatures));
+							}
+							
+							if(differentValuedFeatures.size()>0){
+								jArray.add(new JSONObject().accumulate("FeaturesWithDifferentValues",differentValuedFeatures));
+							}
+							if(missingFeatures.size() > 0){
+								jArray.add(new JSONObject().accumulate("missingFeatures",missingFeatures));
 							}
 						}
 						
