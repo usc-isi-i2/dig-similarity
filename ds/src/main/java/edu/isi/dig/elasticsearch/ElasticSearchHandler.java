@@ -299,7 +299,7 @@ public class ElasticSearchHandler {
 									}
 									
 									//additionalFeatures.add(jTemp);
-									differentValuedFeatures.add(jTemp.toString());
+									additionalFeatures.add(jTemp.toString());
 								}
 							}
 							
@@ -323,7 +323,7 @@ public class ElasticSearchHandler {
 									}
 									
 									//missingFeatures.add(jTemp);
-									differentValuedFeatures.add(jTemp.toString());
+									missingFeatures.add(jTemp.toString());
 								}
 							}
 							
