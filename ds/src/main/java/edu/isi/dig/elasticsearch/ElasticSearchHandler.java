@@ -2,6 +2,7 @@ package edu.isi.dig.elasticsearch;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -135,19 +136,26 @@ public class ElasticSearchHandler {
 				
 				if(jFeature instanceof JSONObject){
 					if(((JSONObject) jFeature).containsKey("featureName") && ((JSONObject) jFeature).containsKey("featureValue")){
-						mapFeatureCollection.put(((JSONObject) jFeature).getString("featureName"), ((JSONObject) jFeature).get("featureValue"));
+						mapFeatureCollection.put(((JSONObject) jFeature).getString("featureName"), ((JSONObject) jFeature).getString("featureValue"));
 					}
 				}else if(jFeature instanceof JSONArray){
 					
 					JSONArray JFeatures = (JSONArray) jFeature;
+					//if its an array, it has multiple values for the feature, 
+					ArrayList<String> multipleValues = new ArrayList<String>();
 					
-					for(int i=0; i < JFeatures.size();i++){
+					if(JFeatures.size() > 0){
+						for(int i=0; i < JFeatures.size();i++){
+							
+							JSONObject jTemp = JFeatures.getJSONObject(i);
+							
+							if(((JSONObject) jTemp).containsKey("featureName") && ((JSONObject) jTemp).containsKey("featureValue")){
 						
-						JSONObject jTemp = JFeatures.getJSONObject(i);
-						
-						if(((JSONObject) jTemp).containsKey("featureName") && ((JSONObject) jTemp).containsKey("featureValue")){
-							mapFeatureCollection.put(((JSONObject) jTemp).getString("featureName"), ((JSONObject) jTemp).get("featureValue"));
+								multipleValues.add(((JSONObject) jTemp).getString("featureValue"));
+							}
 						}
+						//get the featureName,multipleValues map
+						mapFeatureCollection.put(JFeatures.getJSONObject(0).getString("featureName"), multipleValues);
 					}
 				}
 			}
@@ -168,23 +176,18 @@ public class ElasticSearchHandler {
 				
 				if(jSourceObj.containsKey(BODY_PART)){
 					
-					JSONObject jBodyPart = (JSONObject) jSourceObj.get("hasBodyPart");
+					JSONObject jBodyPart = (JSONObject) jSourceObj.get(BODY_PART);
 					
 					if(jBodyPart.containsKey(TEXT)){
 						
-						String bodyText = jBodyPart.getString("text");
+						String bodyText = jBodyPart.getString(TEXT);
 						
 						//Create a map of <featureValues,featureNames>
 						mapSourceFeatures = collectFeatures(searchSourceJson);
 						
-						
-						/*Set<String> keys = mapSourceFeatures.keySet();
-						for(String key : keys){
-							LOG.debug(key + ":" + mapSourceFeatures.get(key));
-						}*/
-						
-						
 						//LOG.debug(bodyText);
+						
+						//ToDo: Make this query better
 						MoreLikeThisQueryBuilder qb = QueryBuilders.moreLikeThisQuery("hasBodyPart.text.shingle_4")
 																   .likeText(bodyText)
 																   .minTermFreq(1)
@@ -209,6 +212,8 @@ public class ElasticSearchHandler {
 							JSONArray missingFeatures = new JSONArray();
 							JSONArray differentValuedFeatures = new JSONArray();
 							
+							JSONObject similarWebPageResult = new JSONObject();
+							
 							
 							JSONObject jSimilarWebPage = (JSONObject)JSONSerializer.toJSON(sh.getSourceAsString());
 							
@@ -220,33 +225,81 @@ public class ElasticSearchHandler {
 								
 								if(mapSourceFeatures.containsKey(key)){
 									
-									String sourceFeatureValue = String.valueOf(mapSourceFeatures.get(key));
-									String targetFeatureValue = String.valueOf(mapSimilarWPFC.get(key));
+									Object sourceFeatureValue = mapSourceFeatures.get(key);
+									Object targetFeatureValue = mapSimilarWPFC.get(key);
 									
-									//LOG.debug("Source:"+sourceFeatureValue);
-									//LOG.debug("Target:"+targetFeatureValue);
-									
-									if(!(sourceFeatureValue.equals(targetFeatureValue))){
+									if(sourceFeatureValue instanceof String && targetFeatureValue instanceof String){
+										
+										if(!(String.valueOf(sourceFeatureValue).equals(String.valueOf(targetFeatureValue)))){
 											JSONObject jTemp = new JSONObject();
-											jTemp.accumulate(key, mapSimilarWPFC.get(key));
-											differentValuedFeatures.add(jTemp);
+											jTemp.accumulate(key, String.valueOf(targetFeatureValue));
+											//differentValuedFeatures.add(jTemp);
+											differentValuedFeatures.add(jTemp.toString());
+										}
+									}
+									else if(sourceFeatureValue instanceof ArrayList<?> && targetFeatureValue instanceof ArrayList<?>){
+										
+										for(int i=0;i < ((ArrayList<?>) targetFeatureValue).size();i++){
 											
+											if(!((ArrayList<?>) sourceFeatureValue).contains(((ArrayList<?>) targetFeatureValue).get(i))){
+												
+												JSONObject jTemp = new JSONObject();
+												jTemp.accumulate(key, ((ArrayList<?>) targetFeatureValue).get(i));
+												//differentValuedFeatures.add(jTemp);
+												differentValuedFeatures.add(jTemp.toString());
+											}
+										}
+									}
+									else{//one is string and other is ArrayList
+										
+										if(sourceFeatureValue instanceof String){//source string, target ArrayList
 											
+											for(int i=0;i < ((ArrayList<?>) targetFeatureValue).size();i++){
+												
+												if(!((ArrayList<?>) targetFeatureValue).get(i).equals(String.valueOf(sourceFeatureValue))){
+													
+													JSONObject jTemp = new JSONObject();
+													jTemp.accumulate(key, ((ArrayList<?>) targetFeatureValue).get(i));
+													//differentValuedFeatures.add(jTemp);
+													differentValuedFeatures.add(jTemp.toString());
+												}
+											}
+											
+										}else{//Source - ArrayList , target - String
+											
+											if(!((ArrayList<?>) sourceFeatureValue).contains(String.valueOf(targetFeatureValue))){
+												
+												JSONObject jTemp = new JSONObject();
+												jTemp.accumulate(key, String.valueOf(targetFeatureValue));
+												//differentValuedFeatures.add(jTemp);
+												differentValuedFeatures.add(jTemp.toString());
+											}
+											
+										}
+										
 									}
 									
+				
 								}
 								else{
-									//additional features
+									//additional features, not present in the source json but in similar json objects
 									JSONObject jTemp = new JSONObject();
 									
-									if(key.equals("person_age")){//will regret harcoding it here
-										jTemp.accumulate(key, Integer.parseInt(String.valueOf(mapSimilarWPFC.get(key))));
-									}else{
-										jTemp.accumulate(key, mapSimilarWPFC.get(key));
+									Object value = mapSimilarWPFC.get(key);
+									
+									if(value instanceof ArrayList<?>){
+										
+										for(int i=0;i< ((ArrayList<?>) value).size();i++){
+											jTemp.accumulate(key, ((ArrayList<?>) value).get(i));
+										}
+									}
+									else{
+										jTemp.accumulate(key, value);
+										
 									}
 									
-									
-									additionalFeatures.add(jTemp);
+									//additionalFeatures.add(jTemp);
+									differentValuedFeatures.add(jTemp.toString());
 								}
 							}
 							
@@ -255,32 +308,51 @@ public class ElasticSearchHandler {
 							for(String key: sourceKeys){
 								if(!mapSimilarWPFC.containsKey(key)){
 									JSONObject jTemp = new JSONObject();
-									jTemp.accumulate(key, mapSourceFeatures.get(key));
-									missingFeatures.add(jTemp);
+									
+									Object value = mapSourceFeatures.get(key);
+									
+									if(value instanceof ArrayList<?>){
+										
+										for(int i=0;i< ((ArrayList<?>) value).size();i++){
+											jTemp.accumulate(key, ((ArrayList<?>) value).get(i));
+										}
+									}
+									else{
+										jTemp.accumulate(key, value);
+										
+									}
+									
+									//missingFeatures.add(jTemp);
+									differentValuedFeatures.add(jTemp.toString());
 								}
 							}
 							
 							String resultURI = jSimilarWebPage.getString("uri");
 							
 							if(sendBack.equalsIgnoreCase("all")){
-								jArray.add(new JSONObject().accumulate("WebPage",jSimilarWebPage));
+								similarWebPageResult.accumulate("similarWebPage",jSimilarWebPage);
 							}
 							else{
-								jArray.add(new JSONObject().accumulate("WebPage", resultURI));
+								JSONObject jSimilarBodyPart = jSimilarWebPage.getJSONObject(BODY_PART);
+								similarWebPageResult.accumulate("uri",resultURI);
+								similarWebPageResult.accumulate(BODY_PART + "."+ TEXT, jSimilarBodyPart.getString(TEXT));
 							}
 							
 							
 							if(additionalFeatures.size() > 0){
-								jArray.add(new JSONObject().accumulate("additionalFeatures", additionalFeatures));
+								similarWebPageResult.accumulate("additionalFeatures", additionalFeatures);
 							}
 							
 							if(differentValuedFeatures.size()>0){
-								jArray.add(new JSONObject().accumulate("FeaturesWithDifferentValues",differentValuedFeatures));
+								similarWebPageResult.accumulate("featuresWithDifferentValues",differentValuedFeatures);
 							}
 							if(missingFeatures.size() > 0){
-								jArray.add(new JSONObject().accumulate("missingFeatures",missingFeatures));
+								similarWebPageResult.accumulate("missingFeatures",missingFeatures);
 							}
+							
+							jArray.add(new JSONObject().accumulate("similarWebPage",similarWebPageResult));
 						}
+						
 						
 						jParentObj.accumulate("similar", jArray);
 						
