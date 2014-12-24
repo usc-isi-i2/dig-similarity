@@ -13,6 +13,7 @@ import net.sf.json.JSONObject;
 import net.sf.json.JSONSerializer;
 
 import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.client.transport.TransportClient;
 import org.elasticsearch.common.settings.ImmutableSettings;
@@ -22,8 +23,9 @@ import org.elasticsearch.index.query.MoreLikeThisQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.index.query.TermQueryBuilder;
 import org.elasticsearch.search.SearchHit;
-//import org.slf4j.Logger;
-//import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 
 public class ElasticSearchHandler {
 	
@@ -35,6 +37,11 @@ public class ElasticSearchHandler {
 	final static String BODY_PART="hasBodyPart";
 	final static String TEXT = "text";
 	final static String fileName = "config.properties";
+	final static String IMAGE_CACHE_URL = "hasImagePart.cacheUrl";
+	final static String SIMILAR_IMAGES = "similar_images_feature";
+	final static String FEATURE_VALUE_LABEL = "featureValue";
+	final static String FEATURE_NAME_LABEL = "featureName";
+	final static String FEATURE_NAME = "similarimageurl";
 
 	
 	static Client esClient=null;
@@ -43,11 +50,14 @@ public class ElasticSearchHandler {
 	static Properties prop=null;
 	static String indexName="";
 	static String docType="";
+	static String environment="";
+	static String returnPort = "9200";
+	static String elasticsearchHost="";
 	
 			
 	static Settings settings = null;
 	
-	//private static Logger LOG = LoggerFactory.getLogger(ElasticSearchHandler.class);
+	private static Logger LOG = LoggerFactory.getLogger(ElasticSearchHandler.class);
 	
 	public static void Initialize(){
 		
@@ -56,16 +66,25 @@ public class ElasticSearchHandler {
 		InputStream input = ElasticSearchHandler.class.getClassLoader().getResourceAsStream(fileName);
 		try{
 			prop.load(input);
+			
+			elasticsearchHost=prop.getProperty("elasticsearchHost");
+			
 			settings = ImmutableSettings.settingsBuilder()
 					.put(prop.getProperty("clusterNameProperty"), prop.getProperty("clusterName")).build();
 
 			ts = new TransportClient(settings);
 
-			esClient = ts.addTransportAddress(new InetSocketTransportAddress(prop.getProperty("elasticsearchHost"), 
+			esClient = ts.addTransportAddress(new InetSocketTransportAddress(elasticsearchHost, 
 																			Integer.parseInt(prop.getProperty("elasticsearchPort"))));
 			
 			indexName = prop.getProperty("indexName");
 			docType = prop.getProperty("docType");
+			environment = prop.getProperty("environment");
+		
+			
+			if(environment.equals("production")){
+				returnPort = prop.getProperty("nginxPort");
+			}
 			
 		}catch(IOException ioe){
 			ioe.printStackTrace();
@@ -386,4 +405,107 @@ public class ElasticSearchHandler {
 		}
 	}
 
+	
+	public static JSONObject addSimilarImagesFeature(JSONObject source, String queryURI) {
+		
+		if(source.containsKey("hasFeatureCollection")){
+			
+			JSONObject jHFC = source.getJSONObject("hasFeatureCollection");//Assumption: it is a json object. I would be surprised if it isnt
+			
+			if(jHFC.containsKey(SIMILAR_IMAGES)){
+				
+				JSONArray jSimImages = jHFC.getJSONArray(SIMILAR_IMAGES);
+				
+				boolean containsURI = false;
+				for(int i=0;i<jSimImages.size();i++){
+					
+					JSONObject jSimImage = jSimImages.getJSONObject(i);
+					if(jSimImage.getString("featureValue").equals(queryURI)){
+						containsURI = true;
+					}
+					
+				}
+				if(!containsURI){
+				
+					JSONObject jNewSimImage = new JSONObject();
+					jNewSimImage.accumulate(FEATURE_NAME_LABEL, FEATURE_NAME);
+					jNewSimImage.accumulate(FEATURE_NAME, queryURI);
+					jNewSimImage.accumulate(FEATURE_VALUE_LABEL, queryURI);
+					
+					jSimImages.add(jNewSimImage);
+				}
+				
+			}else{
+				
+				JSONArray jNewSimImages = new JSONArray();
+				JSONObject jNewSimImage = new JSONObject();
+				jNewSimImage.accumulate(FEATURE_NAME_LABEL, FEATURE_NAME);
+				jNewSimImage.accumulate(FEATURE_NAME, queryURI);
+				jNewSimImage.accumulate(FEATURE_VALUE_LABEL, queryURI);
+				jNewSimImages.add(jNewSimImage);
+				jHFC.accumulate(SIMILAR_IMAGES, jNewSimImages);
+				
+			}
+			
+		}
+		return source;
+	}
+	public static JSONObject UpdateWebPagesWithSimilarImages(JSONArray jArray,String queryURI) throws Exception{
+		try{
+			Initialize();
+			JSONObject jResults = new JSONObject();
+			
+			for(int i=0;i<jArray.size();i++){
+				
+				TermQueryBuilder termQB = QueryBuilders.termQuery(IMAGE_CACHE_URL, jArray.get(i));
+					
+					
+				SearchResponse searchResp = esClient.prepareSearch(indexName)
+													.setTypes(docType)
+													.setQuery(termQB)
+													.execute()
+													.actionGet();
+					
+				SearchHit[] searchHit = searchResp.getHits().getHits();
+				
+				for(SearchHit hit : searchHit){
+					
+					LOG.debug("Ads id: "+ hit.getId());
+					
+					String docId = hit.getId();
+					
+					JSONObject jUpdatedSource = addSimilarImagesFeature((JSONObject) JSONSerializer.toJSON(hit.getSourceAsString()),queryURI);
+					
+					UpdateRequest updateRequest = new UpdateRequest();
+					updateRequest.index(indexName);
+					updateRequest.type(docType);
+					updateRequest.id(docId);
+					updateRequest.doc(jUpdatedSource);
+					esClient.update(updateRequest).get();
+					
+					jResults.accumulate("ad_uri", "http://" + 
+												   elasticsearchHost + ":" + 
+												   returnPort + "/" +
+												   indexName + "/" + 
+												   docType + "/" + 
+												   docId);
+				}
+				
+			}
+			
+			return jResults;
+		
+		}catch(Exception e){
+			throw e;
+		}
+		finally{
+			
+			if(ts!=null)
+				ts.close();
+			
+			if(esClient!=null)
+				esClient.close();
+			
+		}
+	}
 }
