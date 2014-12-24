@@ -14,15 +14,15 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
-//import org.slf4j.Logger;
-//import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import edu.isi.dig.elasticsearch.ElasticSearchHandler;
 
 @Path("/")
 public class SimilarityService {
 	
-	//private static Logger LOGS = LoggerFactory.getLogger(SimilarityService.class);
+	private static Logger LOGS = LoggerFactory.getLogger(SimilarityService.class);
 	
 	@GET
 	@Path("/similar/ads")
@@ -54,47 +54,27 @@ public class SimilarityService {
 			
 			CloseableHttpResponse httpResponse = httpClient.execute(httpGet);
 			
-			
-			
-			if(httpResponse != null){
+			JSONObject jResults = new JSONObject();
+			LOGS.debug("ResponseCode:"+ httpResponse.getStatusLine().getStatusCode());
+			if(httpResponse != null && httpResponse.getStatusLine().getStatusCode() >=200 && httpResponse.getStatusLine().getStatusCode() < 300){
 				
 				try{
 					HttpEntity httpEntity = httpResponse.getEntity();
 					
-					JSONObject jResults = new JSONObject();
-					
-					JSONObject jImages = (JSONObject)JSONSerializer.toJSON(EntityUtils.toString(httpEntity));
-					if(jImages.containsKey("images")){
-						Object jSimImages = jImages.get("images");
+					String jsonResponse = EntityUtils.toString(httpEntity);
+
+					if(jsonResponse!=null && !jsonResponse.trim().equals("")){
 						
-						if(jSimImages instanceof JSONObject){
-							JSONObject jObjSimImages = (JSONObject) jSimImages;
+						JSONObject jImages = (JSONObject)JSONSerializer.toJSON(jsonResponse);
+						
+						if(jImages.containsKey("images")){
+							Object jSimImages = jImages.get("images");
 							
-							if(jObjSimImages.containsKey("similar_images")){
-								JSONObject jSimilarImages = jObjSimImages.getJSONObject("similar_images");
-								if(jSimilarImages.containsKey("cached_image_urls")){
-									Object jCachedImageUrls = jSimilarImages.get("cached_image_urls");
-									if(jCachedImageUrls instanceof JSONArray){
-										jResults = ElasticSearchHandler.UpdateWebPagesWithSimilarImages((JSONArray) jCachedImageUrls,uri);
-										
-									}
-									//TODO check if it is a JSONObject. Shouldn't be though
-								}
-							}
-							//TODO: check for 'image_urls' as well. This is null as of now as returned by Tao's service
-							
-						}
-						else if(jSimImages instanceof JSONArray){
-							
-							JSONArray jArrayImages = (JSONArray) jSimImages;
-							
-							for(int i =0; i<jArrayImages.size();i++){
-								
-								JSONObject jObjSimImages = (JSONObject) jArrayImages.get(i);
+							if(jSimImages instanceof JSONObject){
+								JSONObject jObjSimImages = (JSONObject) jSimImages;
 								
 								if(jObjSimImages.containsKey("similar_images")){
 									JSONObject jSimilarImages = jObjSimImages.getJSONObject("similar_images");
-									
 									if(jSimilarImages.containsKey("cached_image_urls")){
 										Object jCachedImageUrls = jSimilarImages.get("cached_image_urls");
 										if(jCachedImageUrls instanceof JSONArray){
@@ -104,25 +84,44 @@ public class SimilarityService {
 										//TODO check if it is a JSONObject. Shouldn't be though
 									}
 								}
+								//TODO: check for 'image_urls' as well. This is null as of now as returned by Tao's service
 								
 							}
+							else if(jSimImages instanceof JSONArray){
+								
+								JSONArray jArrayImages = (JSONArray) jSimImages;
+								
+								for(int i =0; i<jArrayImages.size();i++){
+									
+									JSONObject jObjSimImages = (JSONObject) jArrayImages.get(i);
+									
+									if(jObjSimImages.containsKey("similar_images")){
+										JSONObject jSimilarImages = jObjSimImages.getJSONObject("similar_images");
+										
+										if(jSimilarImages.containsKey("cached_image_urls")){
+											Object jCachedImageUrls = jSimilarImages.get("cached_image_urls");
+											if(jCachedImageUrls instanceof JSONArray){
+												jResults = ElasticSearchHandler.UpdateWebPagesWithSimilarImages((JSONArray) jCachedImageUrls,uri);
+												
+											}
+											//TODO check if it is a JSONObject. Shouldn't be though
+										}
+									}
+									
+								}
+							}
+							
 						}
+						httpClient.close();
 						
-					}
-					httpClient.close();
-					return jResults.toString();
-					
+					}	
 				}
 				catch(Exception e){
 					throw e;
 				}
 			}
 			
-			
-			else{
-				
-				throw new Exception("No results found for uri: " + uri);
-			}
+			return jResults.toString();
 
 			
 			
