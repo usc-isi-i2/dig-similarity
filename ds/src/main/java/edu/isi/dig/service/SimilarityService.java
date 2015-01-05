@@ -45,7 +45,7 @@ public class SimilarityService {
 	
 	@GET
 	@Path("/similar/images")
-	public String FindImagesAndUpdateES(@QueryParam("uri") String uri) throws Exception{
+	public String FindImagesAndUpdateES(@QueryParam("uri") String uri, @QueryParam("index") String indexName) throws Exception{
 		
 		if(uri != null){
 			
@@ -78,7 +78,7 @@ public class SimilarityService {
 									if(jSimilarImages.containsKey("cached_image_urls")){
 										Object jCachedImageUrls = jSimilarImages.get("cached_image_urls");
 										if(jCachedImageUrls instanceof JSONArray){
-											jResults = ElasticSearchHandler.UpdateWebPagesWithSimilarImages((JSONArray) jCachedImageUrls,uri);
+											jResults = ElasticSearchHandler.UpdateWebPagesWithSimilarImages((JSONArray) jCachedImageUrls,uri,indexName);
 											
 										}
 										//TODO check if it is a JSONObject. Shouldn't be though
@@ -101,7 +101,7 @@ public class SimilarityService {
 										if(jSimilarImages.containsKey("cached_image_urls")){
 											Object jCachedImageUrls = jSimilarImages.get("cached_image_urls");
 											if(jCachedImageUrls instanceof JSONArray){
-												jResults = ElasticSearchHandler.UpdateWebPagesWithSimilarImages((JSONArray) jCachedImageUrls,uri);
+												jResults = ElasticSearchHandler.UpdateWebPagesWithSimilarImages((JSONArray) jCachedImageUrls,uri,indexName);
 												
 											}
 											//TODO check if it is a JSONObject. Shouldn't be though

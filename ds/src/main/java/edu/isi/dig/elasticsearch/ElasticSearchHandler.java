@@ -450,17 +450,27 @@ public class ElasticSearchHandler {
 		}
 		return source;
 	}
-	public static JSONObject UpdateWebPagesWithSimilarImages(JSONArray jArray,String queryURI) throws Exception{
+	public static JSONObject UpdateWebPagesWithSimilarImages(JSONArray jArray,String queryURI,String differentIndex) throws Exception{
 		try{
 			Initialize();
 			JSONObject jResults = new JSONObject();
+			
+			String indexToUse = null;
+			
+			if(differentIndex != null){
+				
+				indexToUse = differentIndex;
+			}else {
+				
+				indexToUse = indexName;
+			}
 			
 			for(int i=0;i<jArray.size();i++){
 				
 				TermQueryBuilder termQB = QueryBuilders.termQuery(IMAGE_CACHE_URL, jArray.get(i));
 					
 					
-				SearchResponse searchResp = esClient.prepareSearch(indexName)
+				SearchResponse searchResp = esClient.prepareSearch(indexToUse)
 													.setTypes(docType)
 													.setQuery(termQB)
 													.execute()
@@ -477,7 +487,7 @@ public class ElasticSearchHandler {
 					JSONObject jUpdatedSource = addSimilarImagesFeature((JSONObject) JSONSerializer.toJSON(hit.getSourceAsString()),queryURI);
 					
 					UpdateRequest updateRequest = new UpdateRequest();
-					updateRequest.index(indexName);
+					updateRequest.index(indexToUse);
 					updateRequest.type(docType);
 					updateRequest.id(docId);
 					updateRequest.doc(jUpdatedSource);
