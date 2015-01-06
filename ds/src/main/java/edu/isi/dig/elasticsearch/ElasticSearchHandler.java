@@ -496,7 +496,7 @@ public class ElasticSearchHandler {
 					jResults.accumulate("ad_uri", "http://" + 
 												   elasticsearchHost + ":" + 
 												   returnPort + "/" +
-												   indexName + "/" + 
+												   indexToUse + "/" + 
 												   docType + "/" + 
 												   docId);
 				}
