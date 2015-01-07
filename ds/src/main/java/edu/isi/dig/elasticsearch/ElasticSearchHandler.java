@@ -42,6 +42,12 @@ public class ElasticSearchHandler {
 	final static String FEATURE_VALUE_LABEL = "featureValue";
 	final static String FEATURE_NAME_LABEL = "featureName";
 	final static String FEATURE_NAME = "similarimageurl";
+	final static String HAS_FEATURE_COLLECTION = "hasFeatureCollection";
+	final static String HAS_IMAGE_PART = "hasImagePart";
+	final static String URI = "uri";
+	final static String FEATURE_OBJECT = "featureObject";
+	final static String IMAGE_OBJECT_URIS = "imageObjectUris";
+	final static String CACHE_URL = "cacheUrl";
 
 	
 	static Client esClient=null;
@@ -99,7 +105,7 @@ public class ElasticSearchHandler {
 		try{
 			Initialize();
 			
-			TermQueryBuilder termQB = QueryBuilders.termQuery("uri", uri);
+			TermQueryBuilder termQB = QueryBuilders.termQuery(URI, uri);
 				
 				
 			SearchResponse searchResp = esClient.prepareSearch(indexName)
@@ -346,14 +352,14 @@ public class ElasticSearchHandler {
 								}
 							}
 							
-							String resultURI = jSimilarWebPage.getString("uri");
+							String resultURI = jSimilarWebPage.getString(URI);
 							
 							if(sendBack.equalsIgnoreCase("all")){
 								similarWebPageResult.accumulate("similarWebPage",jSimilarWebPage);
 							}
 							else{
 								JSONObject jSimilarBodyPart = jSimilarWebPage.getJSONObject(BODY_PART);
-								similarWebPageResult.accumulate("uri",resultURI);
+								similarWebPageResult.accumulate(URI,resultURI);
 								similarWebPageResult.accumulate(BODY_PART + "."+ TEXT, jSimilarBodyPart.getString(TEXT));
 							}
 							
@@ -406,43 +412,78 @@ public class ElasticSearchHandler {
 	}
 
 	
-	public static JSONObject addSimilarImagesFeature(JSONObject source, String queryURI) {
+	public static JSONObject addSimilarImagesFeature(JSONObject source, String queryURI,String matchedImageCacheURI) {
 		
-		if(source.containsKey("hasFeatureCollection")){
+		
+		if(source.containsKey(HAS_FEATURE_COLLECTION)){
 			
 			JSONObject jHFC = source.getJSONObject("hasFeatureCollection");//Assumption: it is a json object. I would be surprised if it isnt
+			
+			boolean containsFeatureObject = false;
+			JSONObject jObjFeatureObject = new JSONObject();
 			
 			if(jHFC.containsKey(SIMILAR_IMAGES)){
 				
 				JSONArray jSimImages = jHFC.getJSONArray(SIMILAR_IMAGES);
 				
+				
 				boolean containsURI = false;
 				for(int i=0;i<jSimImages.size();i++){
 					
-					JSONObject jSimImage = jSimImages.getJSONObject(i);
-					if(jSimImage.getString("featureValue").equals(queryURI)){
-						containsURI = true;
+					if(jSimImages.getJSONObject(i).containsKey(FEATURE_OBJECT)){
+						
+						containsFeatureObject = true;
+						jObjFeatureObject = jSimImages.getJSONObject(i).getJSONObject(FEATURE_OBJECT);
 					}
+					else {
+						
+							JSONObject jSimImage = jSimImages.getJSONObject(i);
+						if(jSimImage.getString(FEATURE_VALUE_LABEL).equals(queryURI)){
+							
+							containsURI = true;
+						}
+					}
+				
 					
 				}
 				if(!containsURI){
 				
-					JSONObject jNewSimImage = new JSONObject();
-					jNewSimImage.accumulate(FEATURE_NAME_LABEL, FEATURE_NAME);
-					jNewSimImage.accumulate(FEATURE_NAME, queryURI);
-					jNewSimImage.accumulate(FEATURE_VALUE_LABEL, queryURI);
-					
-					jSimImages.add(jNewSimImage);
+					jSimImages.add(accumulateSimilarImageFeature(queryURI));
 				}
 				
-			}else{
+				if(containsFeatureObject){ //check if the uri being added is not already in there
+					
+						JSONArray jArrayImageURIs = jObjFeatureObject.getJSONArray(IMAGE_OBJECT_URIS);
+						
+						JSONArray jArrayImagePart = source.getJSONArray(HAS_IMAGE_PART);
+						
+						for(int j=0;j<jArrayImagePart.size();j++){
+								
+							JSONObject jObjImage = jArrayImagePart.getJSONObject(j);
+							
+							if(jObjImage.getString(CACHE_URL).equals(matchedImageCacheURI)){
+								
+								if(!jArrayImageURIs.contains(jObjImage.getString(URI))){
+									
+									jArrayImageURIs.add(jObjImage.getString(URI));
+								}
+							}
+						}
+
+					
+				}else { //add 'featureObject'
+					
+					jSimImages.add(addFeatureObject(source,matchedImageCacheURI));
+					
+				}
+				
+			}
+			else {
 				
 				JSONArray jNewSimImages = new JSONArray();
-				JSONObject jNewSimImage = new JSONObject();
-				jNewSimImage.accumulate(FEATURE_NAME_LABEL, FEATURE_NAME);
-				jNewSimImage.accumulate(FEATURE_NAME, queryURI);
-				jNewSimImage.accumulate(FEATURE_VALUE_LABEL, queryURI);
-				jNewSimImages.add(jNewSimImage);
+				jNewSimImages.add(accumulateSimilarImageFeature(queryURI));
+				
+				jNewSimImages.add(addFeatureObject(source,matchedImageCacheURI));
 				jHFC.accumulate(SIMILAR_IMAGES, jNewSimImages);
 				
 			}
@@ -450,6 +491,45 @@ public class ElasticSearchHandler {
 		}
 		return source;
 	}
+	
+	
+	public static JSONObject addFeatureObject(JSONObject source,String matchedImageCacheURI){
+		
+		JSONArray jArrayImagePart = source.getJSONArray(HAS_IMAGE_PART);//guaranteed to be in there
+		
+		JSONObject jObjReturn = new JSONObject();
+		
+		for(int i=0;i<jArrayImagePart.size();i++){
+			
+			JSONObject jObjImage = jArrayImagePart.getJSONObject(i);
+			
+			if(jObjImage.getString(CACHE_URL).equals(matchedImageCacheURI)){
+				
+				JSONArray jArrayImageURIs = new JSONArray();
+				jArrayImageURIs.add(jObjImage.getString(URI));
+				
+				JSONObject jObjFeatureObject = new JSONObject();
+				jObjFeatureObject.accumulate(IMAGE_OBJECT_URIS, jArrayImageURIs);
+				
+				jObjReturn.accumulate(FEATURE_OBJECT, jObjFeatureObject);
+				break;
+				
+			}
+		}
+		return jObjReturn;
+	}
+	public static JSONObject accumulateSimilarImageFeature(String queryURI){
+		
+		JSONObject jNewSimImage = new JSONObject();
+		jNewSimImage.accumulate(FEATURE_NAME_LABEL, FEATURE_NAME);
+		jNewSimImage.accumulate(FEATURE_NAME, queryURI);
+		jNewSimImage.accumulate(FEATURE_VALUE_LABEL, queryURI);
+		
+		return jNewSimImage;
+		
+	}
+	
+	
 	public static JSONObject UpdateWebPagesWithSimilarImages(JSONArray jArray,String queryURI,String differentIndex) throws Exception{
 		try{
 			Initialize();
@@ -466,6 +546,7 @@ public class ElasticSearchHandler {
 			}
 			
 			for(int i=0;i<jArray.size();i++){
+				
 				
 				TermQueryBuilder termQB = QueryBuilders.termQuery(IMAGE_CACHE_URL, jArray.get(i));
 					
@@ -484,7 +565,9 @@ public class ElasticSearchHandler {
 					
 					String docId = hit.getId();
 					
-					JSONObject jUpdatedSource = addSimilarImagesFeature((JSONObject) JSONSerializer.toJSON(hit.getSourceAsString()),queryURI);
+					JSONObject jUpdatedSource = addSimilarImagesFeature((JSONObject) JSONSerializer.toJSON(hit.getSourceAsString()),
+							                                            queryURI,
+							                                            jArray.get(i).toString());
 					
 					UpdateRequest updateRequest = new UpdateRequest();
 					updateRequest.index(indexToUse);

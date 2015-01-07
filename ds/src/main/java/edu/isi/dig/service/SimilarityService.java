@@ -50,8 +50,8 @@ public class SimilarityService {
 		if(uri != null){
 			
 			CloseableHttpClient httpClient = HttpClients.createDefault();
-			//HttpGet httpGet = new HttpGet("http://sentibank.zapto.org/getSimilar.php?url="+uri+"&fast=1");
-			HttpGet httpGet = new HttpGet("http://ec2-54-186-196-66.us-west-2.compute.amazonaws.com/getSimilar.php?url="+uri+"&fast=1");
+			HttpGet httpGet = new HttpGet("http://sentibank.zapto.org/getSimilar.php?url="+uri+"&fast=1");
+			//HttpGet httpGet = new HttpGet("http://ec2-54-186-196-66.us-west-2.compute.amazonaws.com/getSimilar.php?url="+uri+"&fast=1");
 			
 			CloseableHttpResponse httpResponse = httpClient.execute(httpGet);
 			
