@@ -23,17 +23,12 @@ import org.elasticsearch.index.query.MoreLikeThisQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.index.query.TermQueryBuilder;
 import org.elasticsearch.search.SearchHit;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+//import org.slf4j.Logger;
+//import org.slf4j.LoggerFactory;
 
 
 public class ElasticSearchHandler {
 	
-	/*final static String SEARCH_RESULTS="results";
-	final static String CLUSTER_NAME = "cluster.name";
-	final static String CLUSTER_NAME_VALUE = "dig_isi";
-	final static String ELASTICSEARCH_HOST = "localhost"; 
-	final static int ELASTICSEARCH_PORT = 9300;*/
 	final static String BODY_PART="hasBodyPart";
 	final static String TEXT = "text";
 	final static String fileName = "config.properties";
@@ -63,7 +58,7 @@ public class ElasticSearchHandler {
 			
 	static Settings settings = null;
 	
-	private static Logger LOG = LoggerFactory.getLogger(ElasticSearchHandler.class);
+//	private static Logger LOG = LoggerFactory.getLogger(ElasticSearchHandler.class);
 	
 	public static void Initialize(){
 		
@@ -145,7 +140,6 @@ public class ElasticSearchHandler {
 		JSONObject jSource = (JSONObject) JSONSerializer.toJSON(jsonWebPage);
 		Map<String, Object> mapFeatureCollection = new HashMap<String,Object>();
 		
-		//LOG.debug(jsonWebPage);
 		if(jSource.containsKey("hasFeatureCollection")){
 			
 			JSONObject jFeatureCollection = jSource.getJSONObject("hasFeatureCollection");
@@ -210,8 +204,6 @@ public class ElasticSearchHandler {
 						//Create a map of <featureValues,featureNames>
 						mapSourceFeatures = collectFeatures(searchSourceJson);
 						
-						//LOG.debug(bodyText);
-						
 						//ToDo: Make this query better
 						MoreLikeThisQueryBuilder qb = QueryBuilders.moreLikeThisQuery("hasBodyPart.text.shingle_4")
 																   .likeText(bodyText)
@@ -258,7 +250,6 @@ public class ElasticSearchHandler {
 										if(!(String.valueOf(sourceFeatureValue).equals(String.valueOf(targetFeatureValue)))){
 											JSONObject jTemp = new JSONObject();
 											jTemp.accumulate(key, String.valueOf(targetFeatureValue));
-											//differentValuedFeatures.add(jTemp);
 											differentValuedFeatures.add(jTemp.toString());
 										}
 									}
@@ -270,7 +261,6 @@ public class ElasticSearchHandler {
 												
 												JSONObject jTemp = new JSONObject();
 												jTemp.accumulate(key, ((ArrayList<?>) targetFeatureValue).get(i));
-												//differentValuedFeatures.add(jTemp);
 												differentValuedFeatures.add(jTemp.toString());
 											}
 										}
@@ -285,7 +275,6 @@ public class ElasticSearchHandler {
 													
 													JSONObject jTemp = new JSONObject();
 													jTemp.accumulate(key, ((ArrayList<?>) targetFeatureValue).get(i));
-													//differentValuedFeatures.add(jTemp);
 													differentValuedFeatures.add(jTemp.toString());
 												}
 											}
@@ -296,7 +285,6 @@ public class ElasticSearchHandler {
 												
 												JSONObject jTemp = new JSONObject();
 												jTemp.accumulate(key, String.valueOf(targetFeatureValue));
-												//differentValuedFeatures.add(jTemp);
 												differentValuedFeatures.add(jTemp.toString());
 											}
 											
@@ -323,7 +311,6 @@ public class ElasticSearchHandler {
 										
 									}
 									
-									//additionalFeatures.add(jTemp);
 									additionalFeatures.add(jTemp.toString());
 								}
 							}
@@ -347,7 +334,6 @@ public class ElasticSearchHandler {
 										
 									}
 									
-									//missingFeatures.add(jTemp);
 									missingFeatures.add(jTemp.toString());
 								}
 							}
@@ -455,11 +441,28 @@ public class ElasticSearchHandler {
 					
 						JSONArray jArrayImageURIs = jObjFeatureObject.getJSONArray(IMAGE_OBJECT_URIS);
 						
-						JSONArray jArrayImagePart = source.getJSONArray(HAS_IMAGE_PART);
+						Object ObjImagePart = source.get(HAS_IMAGE_PART);
 						
-						for(int j=0;j<jArrayImagePart.size();j++){
+						if(ObjImagePart instanceof JSONArray){
+						
+							JSONArray jArrayImagePart = (JSONArray) ObjImagePart;
+							
+							for(int j=0;j<jArrayImagePart.size();j++){
+									
+								JSONObject jObjImage = jArrayImagePart.getJSONObject(j);
 								
-							JSONObject jObjImage = jArrayImagePart.getJSONObject(j);
+								if(jObjImage.getString(CACHE_URL).equals(matchedImageCacheURI)){
+									
+									if(!jArrayImageURIs.contains(jObjImage.getString(URI))){
+										
+										jArrayImageURIs.add(jObjImage.getString(URI));
+									}
+								}
+							}
+						}
+						else if(ObjImagePart instanceof JSONObject){
+							
+							JSONObject jObjImage = (JSONObject) ObjImagePart;
 							
 							if(jObjImage.getString(CACHE_URL).equals(matchedImageCacheURI)){
 								
@@ -495,26 +498,49 @@ public class ElasticSearchHandler {
 	
 	public static JSONObject addFeatureObject(JSONObject source,String matchedImageCacheURI){
 		
-		JSONArray jArrayImagePart = source.getJSONArray(HAS_IMAGE_PART);//guaranteed to be in there
+		Object objImagePart = source.get(HAS_IMAGE_PART);
 		
 		JSONObject jObjReturn = new JSONObject();
 		
-		for(int i=0;i<jArrayImagePart.size();i++){
+		if(objImagePart instanceof JSONArray) {
 			
-			JSONObject jObjImage = jArrayImagePart.getJSONObject(i);
+			//JSONArray jArrayImagePart = source.getJSONArray(HAS_IMAGE_PART);//guaranteed to be in there
+			JSONArray jArrayImagePart = (JSONArray) objImagePart;//guaranteed to be in there
 			
-			if(jObjImage.getString(CACHE_URL).equals(matchedImageCacheURI)){
+			for(int i=0;i<jArrayImagePart.size();i++){
+				
+				JSONObject jObjImage = jArrayImagePart.getJSONObject(i);
+				
+				if(jObjImage.getString(CACHE_URL).equals(matchedImageCacheURI)){
+					
+					JSONArray jArrayImageURIs = new JSONArray();
+					jArrayImageURIs.add(jObjImage.getString(URI));
+					
+					JSONObject jObjFeatureObject = new JSONObject();
+					jObjFeatureObject.accumulate(IMAGE_OBJECT_URIS, jArrayImageURIs);
+					
+					jObjReturn.accumulate(FEATURE_OBJECT, jObjFeatureObject);
+					break;
+					
+				}
+			}
+		}
+		else if(objImagePart instanceof JSONObject) {
+			
+			JSONObject jObjImagePart = (JSONObject) objImagePart;
+			
+			if(jObjImagePart.getString(CACHE_URL).equals(matchedImageCacheURI)){
 				
 				JSONArray jArrayImageURIs = new JSONArray();
-				jArrayImageURIs.add(jObjImage.getString(URI));
+				jArrayImageURIs.add(jObjImagePart.getString(URI));
 				
 				JSONObject jObjFeatureObject = new JSONObject();
 				jObjFeatureObject.accumulate(IMAGE_OBJECT_URIS, jArrayImageURIs);
 				
 				jObjReturn.accumulate(FEATURE_OBJECT, jObjFeatureObject);
-				break;
 				
 			}
+			
 		}
 		return jObjReturn;
 	}
@@ -561,7 +587,7 @@ public class ElasticSearchHandler {
 				
 				for(SearchHit hit : searchHit){
 					
-					LOG.debug("Ads id: "+ hit.getId());
+//					LOG.debug("Ads id: "+ hit.getId());
 					
 					String docId = hit.getId();
 					
