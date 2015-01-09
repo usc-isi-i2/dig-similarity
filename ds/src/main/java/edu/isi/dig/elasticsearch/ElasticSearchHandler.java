@@ -16,6 +16,7 @@ import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.client.transport.TransportClient;
+import org.elasticsearch.common.cache.Cache;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.transport.InetSocketTransportAddress;
@@ -95,15 +96,24 @@ public class ElasticSearchHandler {
 	}
 	
 	
-	public static String PerformSimpleSearch(String uri){
+	public static String PerformSimpleSearch(String uri,String differentIndex){
 		
 		try{
 			Initialize();
 			
+			String indexToUse = null;
+			
+			if(differentIndex != null){
+				
+				indexToUse = differentIndex;
+			}else {
+				
+				indexToUse = indexName;
+			}
 			TermQueryBuilder termQB = QueryBuilders.termQuery(URI, uri);
 				
 				
-			SearchResponse searchResp = esClient.prepareSearch(indexName)
+			SearchResponse searchResp = esClient.prepareSearch(indexToUse)
 												.setTypes(docType)
 												.setQuery(termQB)
 												.execute()
@@ -182,10 +192,10 @@ public class ElasticSearchHandler {
 		return mapFeatureCollection;
 	}
 	
-	public static String FindSimilar(String uri,String sendBack){
+	public static String FindSimilar(String uri,String sendBack,String differentIndex){
 		
 		try{
-			String searchSourceJson = PerformSimpleSearch(uri);
+			String searchSourceJson = PerformSimpleSearch(uri,differentIndex);
 			
 			Map<String,Object> mapSourceFeatures = new HashMap<String, Object>();
 			
@@ -213,7 +223,18 @@ public class ElasticSearchHandler {
 						
 						
 						Initialize();
-						searchResp = esClient.prepareSearch(indexName)
+						
+						String indexToUse = null;
+						
+						if(differentIndex != null){
+							
+							indexToUse = differentIndex;
+						}else {
+							
+							indexToUse = indexName;
+						}
+						
+						searchResp = esClient.prepareSearch(indexToUse)
 											 .setTypes(docType)
 											 .setQuery(qb)
 											 .execute()
@@ -451,11 +472,14 @@ public class ElasticSearchHandler {
 									
 								JSONObject jObjImage = jArrayImagePart.getJSONObject(j);
 								
-								if(jObjImage.getString(CACHE_URL).equals(matchedImageCacheURI)){
+								if(jObjImage.containsKey(CACHE_URL)){
 									
-									if(!jArrayImageURIs.contains(jObjImage.getString(URI))){
+									if(jObjImage.getString(CACHE_URL).equals(matchedImageCacheURI)){
 										
-										jArrayImageURIs.add(jObjImage.getString(URI));
+										if(!jArrayImageURIs.contains(jObjImage.getString(URI))){
+											
+											jArrayImageURIs.add(jObjImage.getString(URI));
+										}
 									}
 								}
 							}
@@ -464,11 +488,14 @@ public class ElasticSearchHandler {
 							
 							JSONObject jObjImage = (JSONObject) ObjImagePart;
 							
-							if(jObjImage.getString(CACHE_URL).equals(matchedImageCacheURI)){
+							if(jObjImage.containsKey(CACHE_URL)){
 								
-								if(!jArrayImageURIs.contains(jObjImage.getString(URI))){
+								if(jObjImage.getString(CACHE_URL).equals(matchedImageCacheURI)){
 									
-									jArrayImageURIs.add(jObjImage.getString(URI));
+									if(!jArrayImageURIs.contains(jObjImage.getString(URI))){
+										
+										jArrayImageURIs.add(jObjImage.getString(URI));
+									}
 								}
 							}
 						}
@@ -511,17 +538,20 @@ public class ElasticSearchHandler {
 				
 				JSONObject jObjImage = jArrayImagePart.getJSONObject(i);
 				
-				if(jObjImage.getString(CACHE_URL).equals(matchedImageCacheURI)){
+				if(jObjImage.containsKey(CACHE_URL)){
 					
-					JSONArray jArrayImageURIs = new JSONArray();
-					jArrayImageURIs.add(jObjImage.getString(URI));
-					
-					JSONObject jObjFeatureObject = new JSONObject();
-					jObjFeatureObject.accumulate(IMAGE_OBJECT_URIS, jArrayImageURIs);
-					
-					jObjReturn.accumulate(FEATURE_OBJECT, jObjFeatureObject);
-					break;
-					
+					if(jObjImage.getString(CACHE_URL).equals(matchedImageCacheURI)){
+						
+						JSONArray jArrayImageURIs = new JSONArray();
+						jArrayImageURIs.add(jObjImage.getString(URI));
+						
+						JSONObject jObjFeatureObject = new JSONObject();
+						jObjFeatureObject.accumulate(IMAGE_OBJECT_URIS, jArrayImageURIs);
+						
+						jObjReturn.accumulate(FEATURE_OBJECT, jObjFeatureObject);
+						break;
+						
+					}
 				}
 			}
 		}
@@ -529,16 +559,19 @@ public class ElasticSearchHandler {
 			
 			JSONObject jObjImagePart = (JSONObject) objImagePart;
 			
-			if(jObjImagePart.getString(CACHE_URL).equals(matchedImageCacheURI)){
+			if(jObjImagePart.containsKey(CACHE_URL)){
 				
-				JSONArray jArrayImageURIs = new JSONArray();
-				jArrayImageURIs.add(jObjImagePart.getString(URI));
-				
-				JSONObject jObjFeatureObject = new JSONObject();
-				jObjFeatureObject.accumulate(IMAGE_OBJECT_URIS, jArrayImageURIs);
-				
-				jObjReturn.accumulate(FEATURE_OBJECT, jObjFeatureObject);
-				
+				if(jObjImagePart.getString(CACHE_URL).equals(matchedImageCacheURI)){
+					
+					JSONArray jArrayImageURIs = new JSONArray();
+					jArrayImageURIs.add(jObjImagePart.getString(URI));
+					
+					JSONObject jObjFeatureObject = new JSONObject();
+					jObjFeatureObject.accumulate(IMAGE_OBJECT_URIS, jArrayImageURIs);
+					
+					jObjReturn.accumulate(FEATURE_OBJECT, jObjFeatureObject);
+					
+				}
 			}
 			
 		}

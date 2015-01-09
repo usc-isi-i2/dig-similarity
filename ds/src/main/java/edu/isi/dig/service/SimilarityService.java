@@ -26,15 +26,15 @@ public class SimilarityService {
 	
 	@GET
 	@Path("/similar/ads")
-	public String FindSimilarAds(@QueryParam("uri") String uri,@QueryParam("return") String sendBack) throws Exception{
+	public String FindSimilarAds(@QueryParam("uri") String uri,@QueryParam("return") String sendBack,@QueryParam("index") String indexName) throws Exception{
 		
 		if(uri!=null){
 			if(sendBack!=null && (sendBack.equalsIgnoreCase("uri") || sendBack.equalsIgnoreCase("all"))){
 				
-				return ElasticSearchHandler.FindSimilar(uri,sendBack);
+				return ElasticSearchHandler.FindSimilar(uri,sendBack,indexName);
 			}
 			
-			return ElasticSearchHandler.FindSimilar(uri,"all");
+			return ElasticSearchHandler.FindSimilar(uri,"all",indexName);
 		}
 		
 		throw new Exception("Required parameter 'uri' is null");
