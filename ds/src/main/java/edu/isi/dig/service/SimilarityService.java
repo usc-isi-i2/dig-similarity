@@ -1,5 +1,9 @@
 package edu.isi.dig.service;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
+
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 import javax.ws.rs.QueryParam;
@@ -14,6 +18,9 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
+import org.elasticsearch.client.transport.TransportClient;
+import org.elasticsearch.common.settings.ImmutableSettings;
+import org.elasticsearch.common.transport.InetSocketTransportAddress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,6 +30,29 @@ import edu.isi.dig.elasticsearch.ElasticSearchHandler;
 public class SimilarityService {
 	
 	private static Logger LOGS = LoggerFactory.getLogger(SimilarityService.class);
+	static Properties prop=null;
+	static String imageSimilarityHost=null;
+	static String imageSimilarityPort=null;
+	final static String fileName = "config.properties";
+	
+public static void Initialize(){
+		
+		
+		prop = new Properties();
+		InputStream input = SimilarityService.class.getClassLoader().getResourceAsStream(fileName);
+		try{
+			prop.load(input);
+			
+			imageSimilarityHost=prop.getProperty("imageSimilarityhost");
+			imageSimilarityPort=prop.getProperty("imageSimilarityPort");
+			
+			
+		}catch(IOException ioe){
+			ioe.printStackTrace();
+		}
+		
+		
+	}
 	
 	@GET
 	@Path("/similar/ads")
@@ -49,9 +79,19 @@ public class SimilarityService {
 		
 		if(uri != null){
 			
+			//initialize Image Similarity Parameters
+			Initialize();
+			HttpGet httpGet = null;
+			
 			CloseableHttpClient httpClient = HttpClients.createDefault();
-			HttpGet httpGet = new HttpGet("http://sentibank.zapto.org/getSimilar.php?url="+uri+"&fast=1");
+			//HttpGet httpGet = new HttpGet("http://sentibank.zapto.org/getSimilar.php?url="+uri+"&fast=1");
 			//HttpGet httpGet = new HttpGet("http://ec2-54-186-196-66.us-west-2.compute.amazonaws.com/getSimilar.php?url="+uri+"&fast=1");
+			if(!imageSimilarityPort.equals("-1")){//if port is specified, in other words not 80
+				 httpGet = new HttpGet("http://" + imageSimilarityHost + ":" + imageSimilarityPort+"/getSimilar.php?url="+uri+"&fast=1");
+			}else{
+				httpGet = new HttpGet("http://" + imageSimilarityHost + "/getSimilar.php?url="+uri+"&fast=1");
+			}
+				
 			
 			CloseableHttpResponse httpResponse = httpClient.execute(httpGet);
 			
