@@ -13,26 +13,33 @@ import net.sf.json.JSONObject;
 import net.sf.json.JSONSerializer;
 
 import org.apache.http.HttpEntity;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
+import org.apache.http.conn.ssl.SSLContextBuilder;
+import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
+import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
-import org.elasticsearch.client.transport.TransportClient;
-import org.elasticsearch.common.settings.ImmutableSettings;
-import org.elasticsearch.common.transport.InetSocketTransportAddress;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+//import org.slf4j.Logger;
+//import org.slf4j.LoggerFactory;
 
 import edu.isi.dig.elasticsearch.ElasticSearchHandler;
 
 @Path("/")
 public class SimilarityService {
 	
-	private static Logger LOGS = LoggerFactory.getLogger(SimilarityService.class);
+	//private static Logger LOGS = LoggerFactory.getLogger(SimilarityService.class);
 	static Properties prop=null;
 	static String imageSimilarityHost=null;
 	static String imageSimilarityPort=null;
+	static String imageSimilarityUserName=null;
+	static String imageSimilarityPassword=null;
+	static String imageSimilarityProtocol=null;
 	final static String fileName = "config.properties";
 	
 public static void Initialize(){
@@ -45,6 +52,9 @@ public static void Initialize(){
 			
 			imageSimilarityHost=prop.getProperty("imageSimilarityhost");
 			imageSimilarityPort=prop.getProperty("imageSimilarityPort");
+			imageSimilarityUserName=prop.getProperty("imageSimilarityUserName");
+			imageSimilarityPassword=prop.getProperty("imageSimilarityPassword");
+			imageSimilarityProtocol = prop.getProperty("imageSimilarityProtocol");
 			
 			
 		}catch(IOException ioe){
@@ -81,25 +91,36 @@ public static void Initialize(){
 			
 			//initialize Image Similarity Parameters
 			Initialize();
+			
+			//set credentials
+			CredentialsProvider credsProvider = new BasicCredentialsProvider();
+	        credsProvider.setCredentials(
+	                new AuthScope(AuthScope.ANY_HOST, AuthScope.ANY_PORT),
+	                new UsernamePasswordCredentials( imageSimilarityUserName, imageSimilarityPassword));
+			
+			//accept self signed certificate for https requests
+			SSLContextBuilder builder = new SSLContextBuilder();
+			builder.loadTrustMaterial(null, new TrustSelfSignedStrategy());
+			SSLConnectionSocketFactory sslsf = new SSLConnectionSocketFactory(builder.build(),SSLConnectionSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
+			CloseableHttpClient httpclient = HttpClients.custom().setSSLSocketFactory(sslsf)
+																.setDefaultCredentialsProvider(credsProvider)
+																.build();
+			
 			HttpGet httpGet = null;
 			
-			CloseableHttpClient httpClient = HttpClients.createDefault();
-			//HttpGet httpGet = new HttpGet("http://sentibank.zapto.org/getSimilar.php?url="+uri+"&fast=1");
-			//HttpGet httpGet = new HttpGet("http://ec2-54-186-196-66.us-west-2.compute.amazonaws.com/getSimilar.php?url="+uri+"&fast=1");
+			
 			if(!imageSimilarityPort.equals("-1")){//if port is specified, in other words not 80
-				 httpGet = new HttpGet("http://" + imageSimilarityHost + ":" + imageSimilarityPort+"/getSimilar.php?url="+uri+"&fast=1");
+				 httpGet = new HttpGet(imageSimilarityProtocol+"://" + imageSimilarityHost + ":" + imageSimilarityPort+"/getSimilar.php?url="+uri+"&fast=1");
 			}else{
-				httpGet = new HttpGet("http://" + imageSimilarityHost + "/getSimilar.php?url="+uri+"&fast=1");
+				httpGet = new HttpGet(imageSimilarityProtocol+"://"+ imageSimilarityHost + "/getSimilar.php?url="+uri+"&fast=1");
 			}
 				
-			
-			CloseableHttpResponse httpResponse = httpClient.execute(httpGet);
-			
+			CloseableHttpResponse httpResponse = httpclient.execute(httpGet);
 			JSONObject jResults = new JSONObject();
-			LOGS.debug("ResponseCode:"+ httpResponse.getStatusLine().getStatusCode());
 			if(httpResponse != null && httpResponse.getStatusLine().getStatusCode() >=200 && httpResponse.getStatusLine().getStatusCode() < 300){
 				
 				try{
+					
 					HttpEntity httpEntity = httpResponse.getEntity();
 					
 					String jsonResponse = EntityUtils.toString(httpEntity);
@@ -122,10 +143,8 @@ public static void Initialize(){
 											jResults = ElasticSearchHandler.UpdateWebPagesWithSimilarImages((JSONArray) jCachedImageUrls,uri,indexName);
 											
 										}
-										//TODO check if it is a JSONObject. Shouldn't be though
 									}
 								}
-								//TODO: check for 'image_urls' as well. This is null as of now as returned by Tao's service
 								
 							}
 							else if(jSimImages instanceof JSONArray){
@@ -145,7 +164,6 @@ public static void Initialize(){
 												jResults = ElasticSearchHandler.UpdateWebPagesWithSimilarImages((JSONArray) jCachedImageUrls,uri,indexName);
 												
 											}
-											//TODO check if it is a JSONObject. Shouldn't be though
 										}
 									}
 									
@@ -153,8 +171,7 @@ public static void Initialize(){
 							}
 							
 						}
-						httpClient.close();
-						
+						httpclient.close();
 					}	
 				}
 				catch(Exception e){
