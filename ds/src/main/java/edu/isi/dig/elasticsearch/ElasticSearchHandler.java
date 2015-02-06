@@ -3,6 +3,7 @@ package edu.isi.dig.elasticsearch;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -12,11 +13,11 @@ import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 import net.sf.json.JSONSerializer;
 
+import org.elasticsearch.action.bulk.BulkRequestBuilder;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.client.transport.TransportClient;
-import org.elasticsearch.common.cache.Cache;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.transport.InetSocketTransportAddress;
@@ -73,7 +74,6 @@ public class ElasticSearchHandler {
 			
 			settings = ImmutableSettings.settingsBuilder()
 					.put(prop.getProperty("clusterNameProperty"), prop.getProperty("clusterName")).build();
-
 			ts = new TransportClient(settings);
 
 			esClient = ts.addTransportAddress(new InetSocketTransportAddress(elasticsearchHost, 
@@ -604,6 +604,11 @@ public class ElasticSearchHandler {
 				indexToUse = indexName;
 			}
 			
+			System.out.println("start time:" + new Date().toString());
+			
+			
+			BulkRequestBuilder bulkRB = new BulkRequestBuilder(esClient);
+			
 			for(int i=0;i<jArray.size();i++){
 				
 				
@@ -633,7 +638,11 @@ public class ElasticSearchHandler {
 					updateRequest.type(docType);
 					updateRequest.id(docId);
 					updateRequest.doc(jUpdatedSource);
-					esClient.update(updateRequest).get();
+					
+					
+					bulkRB.add(updateRequest);
+					//esClient.update(updateRequest).get();
+					
 					
 					jResults.accumulate("ad_uri", "http://" + 
 												   elasticsearchHost + ":" + 
@@ -645,6 +654,8 @@ public class ElasticSearchHandler {
 				
 			}
 			
+			bulkRB.execute().actionGet();
+			System.out.println("end time:" + new Date().toString());
 			return jResults;
 		
 		}catch(Exception e){
