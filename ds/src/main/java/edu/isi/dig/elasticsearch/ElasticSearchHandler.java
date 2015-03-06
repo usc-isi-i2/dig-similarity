@@ -609,6 +609,8 @@ public class ElasticSearchHandler {
 			
 			BulkRequestBuilder bulkRB = new BulkRequestBuilder(esClient);
 			
+			jArray.add(queryURI);
+			
 			for(int i=0;i<jArray.size();i++){
 				
 				
