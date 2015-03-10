@@ -25,6 +25,8 @@ import org.elasticsearch.index.query.MoreLikeThisQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.index.query.TermQueryBuilder;
 import org.elasticsearch.search.SearchHit;
+
+import edu.isi.dig.service.SimilarityService.ImageRank;
 //import org.slf4j.Logger;
 //import org.slf4j.LoggerFactory;
 
@@ -43,7 +45,10 @@ public class ElasticSearchHandler {
 	final static String HAS_IMAGE_PART = "hasImagePart";
 	final static String URI = "uri";
 	final static String FEATURE_OBJECT = "featureObject";
+	final static String IMAGE_OBJECT_URI_RANKS="imageObjectUriRanks";
 	final static String IMAGE_OBJECT_URIS = "imageObjectUris";
+	final static String IMAGE_OBJECT_URI = "imageObjectUri";
+	final static String IMAGE_RANK = "imageRank";
 	final static String CACHE_URL = "cacheUrl";
 
 	
@@ -60,7 +65,7 @@ public class ElasticSearchHandler {
 			
 	static Settings settings = null;
 	
-//	private static Logger LOG = LoggerFactory.getLogger(ElasticSearchHandler.class);
+	//private static Logger LOG = LoggerFactory.getLogger(ElasticSearchHandler.class);
 	
 	public static void Initialize(){
 		
@@ -419,12 +424,12 @@ public class ElasticSearchHandler {
 	}
 
 	
-	public static JSONObject addSimilarImagesFeature(JSONObject source, String queryURI,String matchedImageCacheURI) {
+	public static JSONObject addSimilarImagesFeature(JSONObject source, String queryURI,ImageRank matchedImage) {
 		
 		
 		if(source.containsKey(HAS_FEATURE_COLLECTION)){
 			
-			JSONObject jHFC = source.getJSONObject("hasFeatureCollection");//Assumption: it is a json object. I would be surprised if it isnt
+			JSONObject jHFC = source.getJSONObject(HAS_FEATURE_COLLECTION);//Assumption: it is a json object. I would be surprised if it isnt
 			
 			boolean containsFeatureObject = false;
 			JSONObject jObjFeatureObject = new JSONObject();
@@ -441,6 +446,12 @@ public class ElasticSearchHandler {
 						
 						containsFeatureObject = true;
 						jObjFeatureObject = jSimImages.getJSONObject(i).getJSONObject(FEATURE_OBJECT);
+						
+						if(jObjFeatureObject.containsKey(IMAGE_OBJECT_URIS)){
+							jSimImages.remove(i); //historic data, should contain IMAGE_OBJECT_URI_RANKS
+							containsFeatureObject =false;
+						}
+						
 					}
 					else {
 						
@@ -459,9 +470,15 @@ public class ElasticSearchHandler {
 				}
 				
 				if(containsFeatureObject){ //check if the uri being added is not already in there
-					
-						JSONArray jArrayImageURIs = jObjFeatureObject.getJSONArray(IMAGE_OBJECT_URIS);
+
 						
+						JSONArray jArrayImageURIs = jObjFeatureObject.getJSONArray(IMAGE_OBJECT_URI_RANKS);
+						
+						//remove everything 
+						for(int i=0;i<jArrayImageURIs.size();i++){
+							jArrayImageURIs.remove(i);
+						}
+						//LOG.info("SIZE NOW:"+jArrayImageURIs.size());
 						Object ObjImagePart = source.get(HAS_IMAGE_PART);
 						
 						if(ObjImagePart instanceof JSONArray){
@@ -474,12 +491,9 @@ public class ElasticSearchHandler {
 								
 								if(jObjImage.containsKey(CACHE_URL)){
 									
-									if(jObjImage.getString(CACHE_URL).equals(matchedImageCacheURI)){
+									if(jObjImage.getString(CACHE_URL).equals(matchedImage.getImageURL())){
 										
-										if(!jArrayImageURIs.contains(jObjImage.getString(URI))){
-											
-											jArrayImageURIs.add(jObjImage.getString(URI));
-										}
+										jArrayImageURIs.add(addImageRank(jObjImage.getString(URI), matchedImage.getRank()));
 									}
 								}
 							}
@@ -490,20 +504,16 @@ public class ElasticSearchHandler {
 							
 							if(jObjImage.containsKey(CACHE_URL)){
 								
-								if(jObjImage.getString(CACHE_URL).equals(matchedImageCacheURI)){
-									
-									if(!jArrayImageURIs.contains(jObjImage.getString(URI))){
+								if(jObjImage.getString(CACHE_URL).equals(matchedImage.getImageURL())){
 										
-										jArrayImageURIs.add(jObjImage.getString(URI));
-									}
+									jArrayImageURIs.add(addImageRank(jObjImage.getString(URI), matchedImage.getRank()));
 								}
 							}
 						}
-
 					
 				}else { //add 'featureObject'
 					
-					jSimImages.add(addFeatureObject(source,matchedImageCacheURI));
+					jSimImages.add(addFeatureObject(source,matchedImage));
 					
 				}
 				
@@ -513,17 +523,28 @@ public class ElasticSearchHandler {
 				JSONArray jNewSimImages = new JSONArray();
 				jNewSimImages.add(accumulateSimilarImageFeature(queryURI));
 				
-				jNewSimImages.add(addFeatureObject(source,matchedImageCacheURI));
+				jNewSimImages.add(addFeatureObject(source,matchedImage));
 				jHFC.accumulate(SIMILAR_IMAGES, jNewSimImages);
 				
 			}
 			
 		}
+		//LOG.info(source.toString());
 		return source;
 	}
 	
 	
-	public static JSONObject addFeatureObject(JSONObject source,String matchedImageCacheURI){
+	public static JSONObject addImageRank(String imageURI, double rank){
+		
+		JSONObject jImageRank = new JSONObject();
+		
+		jImageRank.accumulate(IMAGE_OBJECT_URI, imageURI);
+		jImageRank.accumulate(IMAGE_RANK, rank);
+		return jImageRank;
+	}
+	
+	
+	public static JSONObject addFeatureObject(JSONObject source,ImageRank matchedImage){
 		
 		Object objImagePart = source.get(HAS_IMAGE_PART);
 		
@@ -540,13 +561,13 @@ public class ElasticSearchHandler {
 				
 				if(jObjImage.containsKey(CACHE_URL)){
 					
-					if(jObjImage.getString(CACHE_URL).equals(matchedImageCacheURI)){
+					if(jObjImage.getString(CACHE_URL).equals(matchedImage.getImageURL())){
 						
 						JSONArray jArrayImageURIs = new JSONArray();
-						jArrayImageURIs.add(jObjImage.getString(URI));
+						jArrayImageURIs.add(addImageRank(jObjImage.getString(URI), matchedImage.getRank()));
 						
 						JSONObject jObjFeatureObject = new JSONObject();
-						jObjFeatureObject.accumulate(IMAGE_OBJECT_URIS, jArrayImageURIs);
+						jObjFeatureObject.accumulate(IMAGE_OBJECT_URI_RANKS, jArrayImageURIs);
 						
 						jObjReturn.accumulate(FEATURE_OBJECT, jObjFeatureObject);
 						break;
@@ -561,13 +582,13 @@ public class ElasticSearchHandler {
 			
 			if(jObjImagePart.containsKey(CACHE_URL)){
 				
-				if(jObjImagePart.getString(CACHE_URL).equals(matchedImageCacheURI)){
+				if(jObjImagePart.getString(CACHE_URL).equals(matchedImage.getImageURL())){
 					
 					JSONArray jArrayImageURIs = new JSONArray();
-					jArrayImageURIs.add(jObjImagePart.getString(URI));
+					jArrayImageURIs.add(addImageRank(jObjImagePart.getString(URI), matchedImage.getRank()));
 					
 					JSONObject jObjFeatureObject = new JSONObject();
-					jObjFeatureObject.accumulate(IMAGE_OBJECT_URIS, jArrayImageURIs);
+					jObjFeatureObject.accumulate(IMAGE_OBJECT_URI_RANKS, jArrayImageURIs);
 					
 					jObjReturn.accumulate(FEATURE_OBJECT, jObjFeatureObject);
 					
@@ -589,7 +610,7 @@ public class ElasticSearchHandler {
 	}
 	
 	
-	public static JSONObject UpdateWebPagesWithSimilarImages(JSONArray jArray,String queryURI,String differentIndex) throws Exception{
+	public static JSONObject UpdateWebPagesWithSimilarImages(ArrayList<ImageRank> jArray,String queryURI,String differentIndex) throws Exception{
 		try{
 			Initialize();
 			JSONObject jResults = new JSONObject();
@@ -609,12 +630,11 @@ public class ElasticSearchHandler {
 			
 			BulkRequestBuilder bulkRB = new BulkRequestBuilder(esClient);
 			
-			jArray.add(queryURI);
 			
 			for(int i=0;i<jArray.size();i++){
 				
 				
-				TermQueryBuilder termQB = QueryBuilders.termQuery(IMAGE_CACHE_URL, jArray.get(i));
+				TermQueryBuilder termQB = QueryBuilders.termQuery(IMAGE_CACHE_URL, jArray.get(i).getImageURL());
 					
 					
 				SearchResponse searchResp = esClient.prepareSearch(indexToUse)
@@ -633,14 +653,13 @@ public class ElasticSearchHandler {
 					
 					JSONObject jUpdatedSource = addSimilarImagesFeature((JSONObject) JSONSerializer.toJSON(hit.getSourceAsString()),
 							                                            queryURI,
-							                                            jArray.get(i).toString());
+							                                            jArray.get(i));
 					
 					UpdateRequest updateRequest = new UpdateRequest();
 					updateRequest.index(indexToUse);
 					updateRequest.type(docType);
 					updateRequest.id(docId);
 					updateRequest.doc(jUpdatedSource);
-					
 					
 					bulkRB.add(updateRequest);
 					//esClient.update(updateRequest).get();
