@@ -469,18 +469,18 @@ public class ElasticSearchHandler {
 					
 					
 					JSONArray jArrayOnlyURIs = new JSONArray();
+					JSONArray jArrayImageURIs = new JSONArray();
 					
 						if(jObjFeatureObject.containsKey(IMAGE_OBJECT_URIS)){
 					
 							jObjFeatureObject.remove(IMAGE_OBJECT_URIS);
 						}
 
-						JSONArray jArrayImageURIs = jObjFeatureObject.getJSONArray(IMAGE_OBJECT_URI_RANKS);
 						
-						//remove everything 
-						for(int i=0;i<jArrayImageURIs.size();i++){
-							jArrayImageURIs.remove(i);
+						if(jObjFeatureObject.containsKey(IMAGE_OBJECT_URI_RANKS)){
+							jObjFeatureObject.remove(IMAGE_OBJECT_URI_RANKS);
 						}
+						
 						//LOG.info("SIZE NOW:"+jArrayImageURIs.size());
 						Object ObjImagePart = source.get(HAS_IMAGE_PART);
 						
@@ -517,6 +517,7 @@ public class ElasticSearchHandler {
 						}
 						
 							jObjFeatureObject.accumulate(IMAGE_OBJECT_URIS, jArrayOnlyURIs);
+							jObjFeatureObject.accumulate(IMAGE_OBJECT_URI_RANKS, jArrayImageURIs);
 					
 				}else { //add 'featureObject'
 					
