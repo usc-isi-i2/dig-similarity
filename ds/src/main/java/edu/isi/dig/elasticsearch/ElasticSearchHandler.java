@@ -447,11 +447,6 @@ public class ElasticSearchHandler {
 						containsFeatureObject = true;
 						jObjFeatureObject = jSimImages.getJSONObject(i).getJSONObject(FEATURE_OBJECT);
 						
-						if(jObjFeatureObject.containsKey(IMAGE_OBJECT_URIS)){
-							jSimImages.remove(i); //historic data, should contain IMAGE_OBJECT_URI_RANKS
-							containsFeatureObject =false;
-						}
-						
 					}
 					else {
 						
@@ -471,7 +466,15 @@ public class ElasticSearchHandler {
 				
 				if(containsFeatureObject){ //check if the uri being added is not already in there
 
-						
+					
+					
+					JSONArray jArrayOnlyURIs = new JSONArray();
+					
+						if(jObjFeatureObject.containsKey(IMAGE_OBJECT_URIS)){
+					
+							jObjFeatureObject.remove(IMAGE_OBJECT_URIS);
+						}
+
 						JSONArray jArrayImageURIs = jObjFeatureObject.getJSONArray(IMAGE_OBJECT_URI_RANKS);
 						
 						//remove everything 
@@ -494,6 +497,7 @@ public class ElasticSearchHandler {
 									if(jObjImage.getString(CACHE_URL).equals(matchedImage.getImageURL())){
 										
 										jArrayImageURIs.add(addImageRank(jObjImage.getString(URI), matchedImage.getRank()));
+										jArrayOnlyURIs.add(jObjImage.getString(URI));
 									}
 								}
 							}
@@ -507,9 +511,12 @@ public class ElasticSearchHandler {
 								if(jObjImage.getString(CACHE_URL).equals(matchedImage.getImageURL())){
 										
 									jArrayImageURIs.add(addImageRank(jObjImage.getString(URI), matchedImage.getRank()));
+									jArrayOnlyURIs.add(jObjImage.getString(URI));
 								}
 							}
 						}
+						
+							jObjFeatureObject.accumulate(IMAGE_OBJECT_URIS, jArrayOnlyURIs);
 					
 				}else { //add 'featureObject'
 					
@@ -564,10 +571,14 @@ public class ElasticSearchHandler {
 					if(jObjImage.getString(CACHE_URL).equals(matchedImage.getImageURL())){
 						
 						JSONArray jArrayImageURIs = new JSONArray();
+						JSONArray jArrayOnlyURIs = new JSONArray();
+						
 						jArrayImageURIs.add(addImageRank(jObjImage.getString(URI), matchedImage.getRank()));
+						jArrayOnlyURIs.add(jObjImage.getString(URI));
 						
 						JSONObject jObjFeatureObject = new JSONObject();
 						jObjFeatureObject.accumulate(IMAGE_OBJECT_URI_RANKS, jArrayImageURIs);
+						jObjFeatureObject.accumulate(IMAGE_OBJECT_URIS, jArrayOnlyURIs);
 						
 						jObjReturn.accumulate(FEATURE_OBJECT, jObjFeatureObject);
 						break;
