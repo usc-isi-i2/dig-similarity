@@ -3,7 +3,6 @@ package edu.isi.dig.elasticsearch;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -13,20 +12,15 @@ import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 import net.sf.json.JSONSerializer;
 
-import org.elasticsearch.action.bulk.BulkRequestBuilder;
-import org.elasticsearch.action.search.SearchResponse;
-import org.elasticsearch.action.update.UpdateRequest;
-import org.elasticsearch.client.Client;
-import org.elasticsearch.client.transport.TransportClient;
-import org.elasticsearch.common.settings.ImmutableSettings;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.util.EntityUtils;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.common.transport.InetSocketTransportAddress;
-import org.elasticsearch.index.query.MoreLikeThisQueryBuilder;
-import org.elasticsearch.index.query.QueryBuilders;
-import org.elasticsearch.index.query.TermQueryBuilder;
-import org.elasticsearch.search.SearchHit;
-
 import edu.isi.dig.service.SimilarityService.ImageRank;
+
 //import org.slf4j.Logger;
 //import org.slf4j.LoggerFactory;
 
@@ -50,17 +44,22 @@ public class ElasticSearchHandler {
 	final static String IMAGE_OBJECT_URI = "imageObjectUri";
 	final static String IMAGE_RANK = "imageRank";
 	final static String CACHE_URL = "cacheUrl";
+	final static String HITS = "hits";
+	final static String SOURCE = "_source";
+	final static String ID = "_id";
 
 	
-	static Client esClient=null;
-	static TransportClient ts =null;
-	static SearchResponse searchResp = null;
+	//static Client esClient=null;
+	//static TransportClient ts =null;
+	//static SearchResponse searchResp = null;
 	static Properties prop=null;
 	static String indexName="";
 	static String docType="";
 	static String environment="";
 	static String returnPort = "9200";
 	static String elasticsearchHost="";
+	static String elasticsearchPort="";
+	//static CloseableHttpClient httpClient=null;
 	
 			
 	static Settings settings = null;
@@ -76,13 +75,14 @@ public class ElasticSearchHandler {
 			prop.load(input);
 			
 			elasticsearchHost=prop.getProperty("elasticsearchHost");
+			elasticsearchPort = prop.getProperty("elasticsearchPort");
 			
-			settings = ImmutableSettings.settingsBuilder()
-					.put(prop.getProperty("clusterNameProperty"), prop.getProperty("clusterName")).build();
-			ts = new TransportClient(settings);
+			//settings = ImmutableSettings.settingsBuilder()
+			//		.put(prop.getProperty("clusterNameProperty"), prop.getProperty("clusterName")).build();
+			//ts = new TransportClient(settings);
 
-			esClient = ts.addTransportAddress(new InetSocketTransportAddress(elasticsearchHost, 
-																			Integer.parseInt(prop.getProperty("elasticsearchPort"))));
+			//esClient = ts.addTransportAddress(new InetSocketTransportAddress(elasticsearchHost, 
+			//																Integer.parseInt(prop.getProperty("elasticsearchPort"))));
 			
 			indexName = prop.getProperty("indexName");
 			docType = prop.getProperty("docType");
@@ -101,7 +101,7 @@ public class ElasticSearchHandler {
 	}
 	
 	
-	public static String PerformSimpleSearch(String uri,String differentIndex){
+	/*public static String PerformSimpleSearch(String uri,String differentIndex){
 		
 		try{
 			Initialize();
@@ -118,11 +118,11 @@ public class ElasticSearchHandler {
 			TermQueryBuilder termQB = QueryBuilders.termQuery(URI, uri);
 				
 				
-			SearchResponse searchResp = esClient.prepareSearch(indexToUse)
-												.setTypes(docType)
-												.setQuery(termQB)
-												.execute()
-												.actionGet();
+			//SearchResponse searchResp = esClient.prepareSearch(indexToUse)
+			//									.setTypes(docType)
+			//									.setQuery(termQB)
+			//									.execute()
+			//									.actionGet();
 				
 			SearchHit[] searchHit = searchResp.getHits().getHits();
 			
@@ -139,17 +139,17 @@ public class ElasticSearchHandler {
 		}
 		finally{
 			
-			if(ts!=null)
-				ts.close();
+			//if(ts!=null)
+			//	ts.close();
 			
-			if(esClient!=null)
-				esClient.close();
+			//if(esClient!=null)
+			//	esClient.close();
 			
 		}
-	}
+	}*/
 	
 	
-	private static Map<String,Object> collectFeatures(String jsonWebPage){
+	public static Map<String,Object> collectFeatures(String jsonWebPage){
 		
 		//AS per our current standards, should be a JSON object
 		JSONObject jSource = (JSONObject) JSONSerializer.toJSON(jsonWebPage);
@@ -199,7 +199,7 @@ public class ElasticSearchHandler {
 	
 	public static String FindSimilar(String uri,String sendBack,String differentIndex){
 		
-		try{
+/*		try{
 			String searchSourceJson = PerformSimpleSearch(uri,differentIndex);
 			
 			Map<String,Object> mapSourceFeatures = new HashMap<String, Object>();
@@ -420,7 +420,7 @@ public class ElasticSearchHandler {
 			if(esClient!=null)
 				esClient.close();
 			
-		}
+		}*/ return null;
 	}
 
 	
@@ -637,71 +637,108 @@ public class ElasticSearchHandler {
 				indexToUse = indexName;
 			}
 			
-			System.out.println("start time:" + new Date().toString());
 			
-			
-			BulkRequestBuilder bulkRB = new BulkRequestBuilder(esClient);
+			//BulkRequestBuilder bulkRB = new BulkRequestBuilder(esClient);
+			StringBuilder bulkUpdate = new StringBuilder();
 			
 			
 			for(int i=0;i<jArray.size();i++){
 				
 				
-				TermQueryBuilder termQB = QueryBuilders.termQuery(IMAGE_CACHE_URL, jArray.get(i).getImageURL());
+				//TermQueryBuilder termQB = QueryBuilders.termQuery(IMAGE_CACHE_URL, jArray.get(i).getImageURL());
 					
-					
-				SearchResponse searchResp = esClient.prepareSearch(indexToUse)
-													.setTypes(docType)
-													.setQuery(termQB)
-													.execute()
-													.actionGet();
-					
-				SearchHit[] searchHit = searchResp.getHits().getHits();
+				HttpPost httpPostTermQuery = new HttpPost("http://" + elasticsearchHost + ":" + elasticsearchPort + "/" + indexToUse + "/_search");
 				
-				for(SearchHit hit : searchHit){
+				String termQuery = 	"{\"query\":{\"bool\" : { \"must\" : { \"term\" : { \"" + IMAGE_CACHE_URL + "\"" + ":\"" + jArray.get(i).getImageURL() + "\"}}}}}";
+				
+				//LOG.info("TERM QUERY: " + termQuery);
+
+				StringEntity entity = new StringEntity(termQuery,"UTF-8");
+				entity.setContentType("application/json");
+				httpPostTermQuery.setEntity(entity);
+				
+				CloseableHttpClient httpClientTQ = HttpClients.createDefault();
+				HttpResponse httpResp = httpClientTQ.execute(httpPostTermQuery);
+				//httpClient.close();
+				
+				 
+				 //LOG.info("Response:"+ EntityUtils.toString(httpResp.getEntity()));
+				 
+				
+				//SearchResponse searchResp = esClient.prepareSearch(indexToUse)
+				//									.setTypes(docType)
+				//									.setQuery(termQB)
+				//									.execute()
+				//									.actionGet();
+				
+				if(httpResp != null && httpResp.getStatusLine().getStatusCode() >=200 && httpResp.getStatusLine().getStatusCode() < 300){
+
+					//LOG.info("HTTPRESPONSE:" + httpResp.toString());
 					
-//					LOG.debug("Ads id: "+ hit.getId());
+					JSONObject termQueryResponse = (JSONObject) JSONSerializer.toJSON(EntityUtils.toString(httpResp.getEntity()));
 					
-					String docId = hit.getId();
+					if(termQueryResponse.containsKey(HITS)) {
+						
+						JSONObject jHitsObject = termQueryResponse.getJSONObject(HITS);
+						
+						if(jHitsObject.containsKey(HITS)) {
+							
+							JSONArray jHitsArray = jHitsObject.getJSONArray(HITS);
+							
+							//SearchHit[] searchHit = searchResp.getHits().getHits();
+							
+							//for(SearchHit hit : searchHit){
+							for(int j=0;j<jHitsArray.size();j++){
+								
+			//					LOG.debug("Ads id: "+ hit.getId());
+								
+								String docId = jHitsArray.getJSONObject(j).getString(ID);
+								
+								JSONObject jUpdatedSource = addSimilarImagesFeature(jHitsArray.getJSONObject(j).getJSONObject(SOURCE),
+										                                            queryURI,
+										                                            jArray.get(i));
+								
+								String bulkFormat = "{\"update\":{\"_index\":\"" + indexToUse+ "\",\"_type\":\""+ docType +"\",\"_id\":\""+docId+"\"}}";
+								//String bulkFormat = "{\"update\":{\"_id\":\""+docId+"\"}}";
+								
+								bulkUpdate.append(bulkFormat);
+								bulkUpdate.append(System.getProperty("line.separator"));
+								bulkUpdate.append("{\"doc\":");
+								bulkUpdate.append(jUpdatedSource);
+								bulkUpdate.append("}");
+								bulkUpdate.append(System.getProperty("line.separator"));
+								
+								jResults.accumulate("ad_uri", "http://" + 
+															   elasticsearchHost + ":" + 
+															   returnPort + "/" +
+															   indexToUse + "/" + 
+															   docType + "/" + 
+															   docId);
+							}
+						}
+					}
 					
-					JSONObject jUpdatedSource = addSimilarImagesFeature((JSONObject) JSONSerializer.toJSON(hit.getSourceAsString()),
-							                                            queryURI,
-							                                            jArray.get(i));
-					
-					UpdateRequest updateRequest = new UpdateRequest();
-					updateRequest.index(indexToUse);
-					updateRequest.type(docType);
-					updateRequest.id(docId);
-					updateRequest.doc(jUpdatedSource);
-					
-					bulkRB.add(updateRequest);
-					//esClient.update(updateRequest).get();
-					
-					
-					jResults.accumulate("ad_uri", "http://" + 
-												   elasticsearchHost + ":" + 
-												   returnPort + "/" +
-												   indexToUse + "/" + 
-												   docType + "/" + 
-												   docId);
 				}
-				
+				httpClientTQ.close();
 			}
 			
-			bulkRB.execute().actionGet();
-			System.out.println("end time:" + new Date().toString());
+			
+			HttpPost httpPost = new HttpPost("http://" + elasticsearchHost + ":" + elasticsearchPort + "/_bulk");
+			
+			StringEntity entity = new StringEntity(bulkUpdate.toString(),"UTF-8");
+			entity.setContentType("application/json");
+			httpPost.setEntity(entity);
+			
+			CloseableHttpClient httpClientBulk = HttpClients.createDefault();
+			httpClientBulk.execute(httpPost);
+			
+			httpClientBulk.close();
+
 			return jResults;
 		
 		}catch(Exception e){
 			throw e;
 		}
-		finally{
-			
-			if(ts!=null)
-				ts.close();
-			
-			if(esClient!=null)
-				esClient.close();
-			
-		}
+
 	}
 }

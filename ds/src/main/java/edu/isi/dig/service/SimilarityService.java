@@ -117,7 +117,7 @@ public static void Initialize(){
 		
 	}
 	
-	private ArrayList<ImageRank> getSimilarImages(String uri) throws NoSuchAlgorithmException, KeyStoreException, ClientProtocolException, IOException, KeyManagementException{
+	protected ArrayList<ImageRank> getSimilarImages(String uri) throws NoSuchAlgorithmException, KeyStoreException, ClientProtocolException, IOException, KeyManagementException{
 		
 		//set credentials
 		CredentialsProvider credsProvider = new BasicCredentialsProvider();
