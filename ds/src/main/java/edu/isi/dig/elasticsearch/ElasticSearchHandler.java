@@ -77,13 +77,6 @@ public class ElasticSearchHandler {
 			elasticsearchHost=prop.getProperty("elasticsearchHost");
 			elasticsearchPort = prop.getProperty("elasticsearchPort");
 			
-			//settings = ImmutableSettings.settingsBuilder()
-			//		.put(prop.getProperty("clusterNameProperty"), prop.getProperty("clusterName")).build();
-			//ts = new TransportClient(settings);
-
-			//esClient = ts.addTransportAddress(new InetSocketTransportAddress(elasticsearchHost, 
-			//																Integer.parseInt(prop.getProperty("elasticsearchPort"))));
-			
 			indexName = prop.getProperty("indexName");
 			docType = prop.getProperty("docType");
 			environment = prop.getProperty("environment");
@@ -101,7 +94,7 @@ public class ElasticSearchHandler {
 	}
 	
 	
-	/*public static String PerformSimpleSearch(String uri,String differentIndex){
+	public static String PerformSimpleSearch(String uri,String differentIndex){
 		
 		try{
 			Initialize();
@@ -115,22 +108,40 @@ public class ElasticSearchHandler {
 				
 				indexToUse = indexName;
 			}
-			TermQueryBuilder termQB = QueryBuilders.termQuery(URI, uri);
-				
-				
-			//SearchResponse searchResp = esClient.prepareSearch(indexToUse)
-			//									.setTypes(docType)
-			//									.setQuery(termQB)
-			//									.execute()
-			//									.actionGet();
-				
-			SearchHit[] searchHit = searchResp.getHits().getHits();
 			
+			HttpPost httpPostTermQuery = new HttpPost("http://" + elasticsearchHost + ":" + elasticsearchPort + "/" + indexToUse + "/_search");
 			
-			if(searchHit.length == 1){
+			String termQuery = 	"{\"query\":{\"bool\" : { \"must\" : { \"term\" : { \"" + URI + "\"" + ":\"" + uri + "\"}}}}}";
+			
+
+			StringEntity entity = new StringEntity(termQuery,"UTF-8");
+			entity.setContentType("application/json");
+			httpPostTermQuery.setEntity(entity);
+			
+			CloseableHttpClient httpClientTQ = HttpClients.createDefault();
+			HttpResponse httpResp = httpClientTQ.execute(httpPostTermQuery);
 				
-				return searchHit[0].getSourceAsString();
+			if(httpResp != null && httpResp.getStatusLine().getStatusCode() >=200 && httpResp.getStatusLine().getStatusCode() < 300){
+
+				
+				JSONObject termQueryResponse = (JSONObject) JSONSerializer.toJSON(EntityUtils.toString(httpResp.getEntity()));
+				
+				if(termQueryResponse.containsKey(HITS)) {
+					
+					JSONObject jHitsObject = termQueryResponse.getJSONObject(HITS);
+					
+					if(jHitsObject.containsKey(HITS)) {
+						
+						JSONArray jHitsArray = jHitsObject.getJSONArray(HITS);
+						
+						if(jHitsArray.size() == 1){
+							return jHitsArray.getJSONObject(0).getJSONObject(SOURCE).toString();
+						}
+					}
+				}
+				
 			}
+			httpClientTQ.close();
 			
 		return null;
 		
@@ -146,7 +157,7 @@ public class ElasticSearchHandler {
 			//	esClient.close();
 			
 		}
-	}*/
+	}
 	
 	
 	public static Map<String,Object> collectFeatures(String jsonWebPage){
@@ -645,13 +656,11 @@ public class ElasticSearchHandler {
 			for(int i=0;i<jArray.size();i++){
 				
 				
-				//TermQueryBuilder termQB = QueryBuilders.termQuery(IMAGE_CACHE_URL, jArray.get(i).getImageURL());
 					
 				HttpPost httpPostTermQuery = new HttpPost("http://" + elasticsearchHost + ":" + elasticsearchPort + "/" + indexToUse + "/_search");
 				
 				String termQuery = 	"{\"query\":{\"bool\" : { \"must\" : { \"term\" : { \"" + IMAGE_CACHE_URL + "\"" + ":\"" + jArray.get(i).getImageURL() + "\"}}}}}";
 				
-				//LOG.info("TERM QUERY: " + termQuery);
 
 				StringEntity entity = new StringEntity(termQuery,"UTF-8");
 				entity.setContentType("application/json");
@@ -659,21 +668,10 @@ public class ElasticSearchHandler {
 				
 				CloseableHttpClient httpClientTQ = HttpClients.createDefault();
 				HttpResponse httpResp = httpClientTQ.execute(httpPostTermQuery);
-				//httpClient.close();
 				
-				 
-				 //LOG.info("Response:"+ EntityUtils.toString(httpResp.getEntity()));
-				 
-				
-				//SearchResponse searchResp = esClient.prepareSearch(indexToUse)
-				//									.setTypes(docType)
-				//									.setQuery(termQB)
-				//									.execute()
-				//									.actionGet();
 				
 				if(httpResp != null && httpResp.getStatusLine().getStatusCode() >=200 && httpResp.getStatusLine().getStatusCode() < 300){
 
-					//LOG.info("HTTPRESPONSE:" + httpResp.toString());
 					
 					JSONObject termQueryResponse = (JSONObject) JSONSerializer.toJSON(EntityUtils.toString(httpResp.getEntity()));
 					
@@ -685,12 +683,8 @@ public class ElasticSearchHandler {
 							
 							JSONArray jHitsArray = jHitsObject.getJSONArray(HITS);
 							
-							//SearchHit[] searchHit = searchResp.getHits().getHits();
 							
-							//for(SearchHit hit : searchHit){
 							for(int j=0;j<jHitsArray.size();j++){
-								
-			//					LOG.debug("Ads id: "+ hit.getId());
 								
 								String docId = jHitsArray.getJSONObject(j).getString(ID);
 								
@@ -699,7 +693,6 @@ public class ElasticSearchHandler {
 										                                            jArray.get(i));
 								
 								String bulkFormat = "{\"update\":{\"_index\":\"" + indexToUse+ "\",\"_type\":\""+ docType +"\",\"_id\":\""+docId+"\"}}";
-								//String bulkFormat = "{\"update\":{\"_id\":\""+docId+"\"}}";
 								
 								bulkUpdate.append(bulkFormat);
 								bulkUpdate.append(System.getProperty("line.separator"));
