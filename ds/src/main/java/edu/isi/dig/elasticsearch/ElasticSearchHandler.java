@@ -2,6 +2,9 @@ package edu.isi.dig.elasticsearch;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.security.KeyManagementException;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -13,12 +16,20 @@ import net.sf.json.JSONObject;
 import net.sf.json.JSONSerializer;
 
 import org.apache.http.HttpResponse;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
+import org.apache.http.conn.ssl.SSLContextBuilder;
+import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
 import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
 import org.elasticsearch.common.settings.Settings;
+
 import edu.isi.dig.service.SimilarityService.ImageRank;
 
 //import org.slf4j.Logger;
@@ -59,14 +70,20 @@ public class ElasticSearchHandler {
 	static String returnPort = "9200";
 	static String elasticsearchHost="";
 	static String elasticsearchPort="";
+	static String elasticsearchProtocol="";
+	static String elasticsearchUserName="";
+	static String elasticsearchPassword="";
 	//static CloseableHttpClient httpClient=null;
+	
+	static CredentialsProvider credsProvider = null;
+	static SSLConnectionSocketFactory sslsf = null;
 	
 			
 	static Settings settings = null;
 	
 	//private static Logger LOG = LoggerFactory.getLogger(ElasticSearchHandler.class);
 	
-	public static void Initialize(){
+	public static void Initialize() throws NoSuchAlgorithmException, KeyStoreException, KeyManagementException{
 		
 		
 		prop = new Properties();
@@ -76,6 +93,9 @@ public class ElasticSearchHandler {
 			
 			elasticsearchHost=prop.getProperty("elasticsearchHost");
 			elasticsearchPort = prop.getProperty("elasticsearchPort");
+			elasticsearchProtocol = prop.getProperty("elasticsearchProtocol");
+			elasticsearchUserName = prop.getProperty("elasticsearchUserName");
+			elasticsearchPassword = prop.getProperty("elasticsearchPassword");
 			
 			indexName = prop.getProperty("indexName");
 			docType = prop.getProperty("docType");
@@ -84,6 +104,22 @@ public class ElasticSearchHandler {
 			
 			if(environment.equals("production")){
 				returnPort = prop.getProperty("nginxPort");
+			}
+			
+			
+			//set credentials
+			if(elasticsearchUserName.trim()!="" && elasticsearchPassword.trim()!=""){
+				credsProvider = new BasicCredentialsProvider();
+				credsProvider.setCredentials(
+						new AuthScope(AuthScope.ANY_HOST, AuthScope.ANY_PORT),
+						new UsernamePasswordCredentials( elasticsearchUserName, elasticsearchPassword));
+			}
+			
+			//accept self signed certificate for https requests
+			if(elasticsearchProtocol.trim()!="" && elasticsearchProtocol.equalsIgnoreCase("https")){
+				SSLContextBuilder builder = new SSLContextBuilder();
+				builder.loadTrustMaterial(null, new TrustSelfSignedStrategy());
+				sslsf = new SSLConnectionSocketFactory(builder.build(),SSLConnectionSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
 			}
 			
 		}catch(IOException ioe){
@@ -657,7 +693,7 @@ public class ElasticSearchHandler {
 				
 				
 					
-				HttpPost httpPostTermQuery = new HttpPost("http://" + elasticsearchHost + ":" + elasticsearchPort + "/" + indexToUse + "/_search");
+				HttpPost httpPostTermQuery = new HttpPost(elasticsearchProtocol + "://" + elasticsearchHost + ":" + elasticsearchPort + "/" + indexToUse + "/_search");
 				
 				String termQuery = 	"{\"query\":{\"bool\" : { \"must\" : { \"term\" : { \"" + IMAGE_CACHE_URL + "\"" + ":\"" + jArray.get(i).getImageURL() + "\"}}}}}";
 				
@@ -666,7 +702,17 @@ public class ElasticSearchHandler {
 				entity.setContentType("application/json");
 				httpPostTermQuery.setEntity(entity);
 				
-				CloseableHttpClient httpClientTQ = HttpClients.createDefault();
+				CloseableHttpClient httpClientTQ=null;
+				if(sslsf != null && credsProvider != null){
+					httpClientTQ = HttpClients.custom().setSSLSocketFactory(sslsf)
+													   .setDefaultCredentialsProvider(credsProvider)
+													   .build();
+				}
+				else{
+					httpClientTQ = HttpClients.createDefault();
+				}
+				
+				 
 				HttpResponse httpResp = httpClientTQ.execute(httpPostTermQuery);
 				
 				
@@ -716,13 +762,23 @@ public class ElasticSearchHandler {
 			}
 			
 			
-			HttpPost httpPost = new HttpPost("http://" + elasticsearchHost + ":" + elasticsearchPort + "/_bulk");
+			HttpPost httpPost = new HttpPost(elasticsearchProtocol + "://" + elasticsearchHost + ":" + elasticsearchPort + "/_bulk");
 			
 			StringEntity entity = new StringEntity(bulkUpdate.toString(),"UTF-8");
 			entity.setContentType("application/json");
 			httpPost.setEntity(entity);
 			
-			CloseableHttpClient httpClientBulk = HttpClients.createDefault();
+			
+			CloseableHttpClient httpClientBulk=null;
+			if(sslsf != null && credsProvider != null){
+				httpClientBulk = HttpClients.custom().setSSLSocketFactory(sslsf)
+												   .setDefaultCredentialsProvider(credsProvider)
+												   .build();
+			}
+			else{
+				httpClientBulk = HttpClients.createDefault();
+			}
+
 			httpClientBulk.execute(httpPost);
 			
 			httpClientBulk.close();
