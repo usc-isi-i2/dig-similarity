@@ -37,6 +37,9 @@ import org.apache.http.util.EntityUtils;
 
 
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import edu.isi.dig.elasticsearch.ElasticSearchHandler;
 
 @Path("/")
@@ -50,7 +53,8 @@ public class SimilarityService {
 	static String imageSimilarityPassword=null;
 	static String imageSimilarityProtocol=null;
 	final static String fileName = "config.properties";
-	
+
+	private static Logger LOG = LoggerFactory.getLogger(SimilarityService.class);
 public static void Initialize(){
 		
 		
@@ -101,14 +105,7 @@ public static void Initialize(){
 			//initialize Image Similarity Parameters
 			Initialize();
 			
-			
-			
-				
-			JSONObject jResults = new JSONObject();
-		
-			jResults = ElasticSearchHandler.UpdateWebPagesWithSimilarImages(getSimilarImages(uri),uri,indexName);
-			
-			return jResults.toString();
+			return ElasticSearchHandler.UpdateWebPagesWithSimilarImages(getSimilarImages(uri),uri,indexName);
 
 		}else{
 			
@@ -146,7 +143,7 @@ public static void Initialize(){
 		if(httpResponse != null && httpResponse.getStatusLine().getStatusCode() >=200 && httpResponse.getStatusLine().getStatusCode() < 300){
 			
 			try{
-				
+				long start = System.currentTimeMillis();
 				HttpEntity httpEntity = httpResponse.getEntity();
 				
 				String jsonResponse = EntityUtils.toString(httpEntity);
@@ -181,6 +178,7 @@ public static void Initialize(){
 										
 										
 										responseArray.addAll(getImageRank((JSONArray)jCachedImageUrls, 1.0, false));
+										LOG.info("SimilarityService execution time: " + (System.currentTimeMillis() - start));
 										return responseArray;
 										
 									}
@@ -214,6 +212,7 @@ public static void Initialize(){
 											
 											
 											responseArray.addAll(getImageRank((JSONArray)jCachedImageUrls, 1.0, false));
+											LOG.info("SimilarityService execution time: " + (System.currentTimeMillis() - start));
 											return responseArray;
 										}
 									}
@@ -224,6 +223,7 @@ public static void Initialize(){
 						
 					}
 					httpclient.close();
+					LOG.info("SimilarityService execution time: " + (System.currentTimeMillis() - start));
 				}	
 			}
 			catch(Exception e){
