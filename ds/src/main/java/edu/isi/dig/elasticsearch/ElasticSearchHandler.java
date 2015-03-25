@@ -486,8 +486,6 @@ public class ElasticSearchHandler {
 						
 						containsFeatureObject = true;
 						jObjFeatureObject = jSimImages.getJSONObject(i).getJSONObject(FEATURE_OBJECT);
-						jSimImages.remove(i);
-						containsFeatureObject = false;
 						
 					}
 					else {
@@ -636,10 +634,15 @@ public class ElasticSearchHandler {
 				if(jObjImagePart.getString(CACHE_URL).equals(matchedImage.getImageURL())){
 					
 					JSONArray jArrayImageURIs = new JSONArray();
+					JSONArray jArrayOnlyURIs = new JSONArray();
+					
 					jArrayImageURIs.add(addImageRank(jObjImagePart.getString(URI), matchedImage.getRank()));
+					jArrayOnlyURIs.add(jObjImagePart.getString(URI));
+					
 					
 					JSONObject jObjFeatureObject = new JSONObject();
 					jObjFeatureObject.accumulate(IMAGE_OBJECT_URI_RANKS, jArrayImageURIs);
+					jObjFeatureObject.accumulate(IMAGE_OBJECT_URIS, jArrayOnlyURIs);
 					
 					jObjReturn.accumulate(FEATURE_OBJECT, jObjFeatureObject);
 					
