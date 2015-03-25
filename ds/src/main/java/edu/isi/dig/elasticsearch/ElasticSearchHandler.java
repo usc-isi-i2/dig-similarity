@@ -486,6 +486,8 @@ public class ElasticSearchHandler {
 						
 						containsFeatureObject = true;
 						jObjFeatureObject = jSimImages.getJSONObject(i).getJSONObject(FEATURE_OBJECT);
+						jSimImages.remove(i);
+						containsFeatureObject = false;
 						
 					}
 					else {
