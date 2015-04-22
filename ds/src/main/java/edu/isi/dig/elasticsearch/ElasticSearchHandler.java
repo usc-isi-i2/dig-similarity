@@ -2,33 +2,43 @@ package edu.isi.dig.elasticsearch;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.security.KeyManagementException;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 import net.sf.json.JSONSerializer;
 
-import org.elasticsearch.action.bulk.BulkRequestBuilder;
-import org.elasticsearch.action.search.SearchResponse;
-import org.elasticsearch.action.update.UpdateRequest;
-import org.elasticsearch.client.Client;
-import org.elasticsearch.client.transport.TransportClient;
-import org.elasticsearch.common.settings.ImmutableSettings;
+import org.apache.http.HttpResponse;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.client.CredentialsProvider;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
+import org.apache.http.conn.ssl.SSLContextBuilder;
+import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.BasicCredentialsProvider;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.util.EntityUtils;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.common.transport.InetSocketTransportAddress;
-import org.elasticsearch.index.query.MoreLikeThisQueryBuilder;
-import org.elasticsearch.index.query.QueryBuilders;
-import org.elasticsearch.index.query.TermQueryBuilder;
-import org.elasticsearch.search.SearchHit;
-
-import edu.isi.dig.service.SimilarityService.ImageRank;
 //import org.slf4j.Logger;
 //import org.slf4j.LoggerFactory;
+
+import edu.isi.dig.service.SimilarityService.ImageRank;
 
 
 public class ElasticSearchHandler {
@@ -50,24 +60,31 @@ public class ElasticSearchHandler {
 	final static String IMAGE_OBJECT_URI = "imageObjectUri";
 	final static String IMAGE_RANK = "imageRank";
 	final static String CACHE_URL = "cacheUrl";
+	final static String HITS = "hits";
+	final static String SOURCE = "_source";
+	final static String ID = "_id";
 
 	
-	static Client esClient=null;
-	static TransportClient ts =null;
-	static SearchResponse searchResp = null;
 	static Properties prop=null;
 	static String indexName="";
 	static String docType="";
 	static String environment="";
 	static String returnPort = "9200";
 	static String elasticsearchHost="";
+	static String elasticsearchPort="";
+	static String elasticsearchProtocol="";
+	static String elasticsearchUserName="";
+	static String elasticsearchPassword="";
+	
+	static CredentialsProvider credsProvider = null;
+	static SSLConnectionSocketFactory sslsf = null;
 	
 			
 	static Settings settings = null;
 	
 	//private static Logger LOG = LoggerFactory.getLogger(ElasticSearchHandler.class);
 	
-	public static void Initialize(){
+	public static void Initialize() throws NoSuchAlgorithmException, KeyStoreException, KeyManagementException{
 		
 		
 		prop = new Properties();
@@ -76,13 +93,10 @@ public class ElasticSearchHandler {
 			prop.load(input);
 			
 			elasticsearchHost=prop.getProperty("elasticsearchHost");
-			
-			settings = ImmutableSettings.settingsBuilder()
-					.put(prop.getProperty("clusterNameProperty"), prop.getProperty("clusterName")).build();
-			ts = new TransportClient(settings);
-
-			esClient = ts.addTransportAddress(new InetSocketTransportAddress(elasticsearchHost, 
-																			Integer.parseInt(prop.getProperty("elasticsearchPort"))));
+			elasticsearchPort = prop.getProperty("elasticsearchPort");
+			elasticsearchProtocol = prop.getProperty("elasticsearchProtocol");
+			elasticsearchUserName = prop.getProperty("elasticsearchUserName");
+			elasticsearchPassword = prop.getProperty("elasticsearchPassword");
 			
 			indexName = prop.getProperty("indexName");
 			docType = prop.getProperty("docType");
@@ -91,6 +105,22 @@ public class ElasticSearchHandler {
 			
 			if(environment.equals("production")){
 				returnPort = prop.getProperty("nginxPort");
+			}
+			
+			
+			//set credentials
+			if(elasticsearchUserName.trim()!="" && elasticsearchPassword.trim()!=""){
+				credsProvider = new BasicCredentialsProvider();
+				credsProvider.setCredentials(
+						new AuthScope(AuthScope.ANY_HOST, AuthScope.ANY_PORT),
+						new UsernamePasswordCredentials( elasticsearchUserName, elasticsearchPassword));
+			}
+			
+			//accept self signed certificate for https requests
+			if(elasticsearchProtocol.trim()!="" && elasticsearchProtocol.equalsIgnoreCase("https")){
+				SSLContextBuilder builder = new SSLContextBuilder();
+				builder.loadTrustMaterial(null, new TrustSelfSignedStrategy());
+				sslsf = new SSLConnectionSocketFactory(builder.build(),SSLConnectionSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
 			}
 			
 		}catch(IOException ioe){
@@ -115,41 +145,51 @@ public class ElasticSearchHandler {
 				
 				indexToUse = indexName;
 			}
-			TermQueryBuilder termQB = QueryBuilders.termQuery(URI, uri);
-				
-				
-			SearchResponse searchResp = esClient.prepareSearch(indexToUse)
-												.setTypes(docType)
-												.setQuery(termQB)
-												.execute()
-												.actionGet();
-				
-			SearchHit[] searchHit = searchResp.getHits().getHits();
 			
+			HttpPost httpPostTermQuery = new HttpPost("http://" + elasticsearchHost + ":" + elasticsearchPort + "/" + indexToUse + "/_search");
 			
-			if(searchHit.length == 1){
+			String termQuery = 	"{\"query\":{\"bool\" : { \"must\" : { \"term\" : { \"" + URI + "\"" + ":\"" + uri + "\"}}}}}";
+			
+
+			StringEntity entity = new StringEntity(termQuery,"UTF-8");
+			entity.setContentType("application/json");
+			httpPostTermQuery.setEntity(entity);
+			
+			CloseableHttpClient httpClientTQ = HttpClients.createDefault();
+			HttpResponse httpResp = httpClientTQ.execute(httpPostTermQuery);
 				
-				return searchHit[0].getSourceAsString();
+			if(httpResp != null && httpResp.getStatusLine().getStatusCode() >=200 && httpResp.getStatusLine().getStatusCode() < 300){
+
+				
+				JSONObject termQueryResponse = (JSONObject) JSONSerializer.toJSON(EntityUtils.toString(httpResp.getEntity()));
+				
+				if(termQueryResponse.containsKey(HITS)) {
+					
+					JSONObject jHitsObject = termQueryResponse.getJSONObject(HITS);
+					
+					if(jHitsObject.containsKey(HITS)) {
+						
+						JSONArray jHitsArray = jHitsObject.getJSONArray(HITS);
+						
+						if(jHitsArray.size() == 1){
+							return jHitsArray.getJSONObject(0).getJSONObject(SOURCE).toString();
+						}
+					}
+				}
+				
 			}
+			httpClientTQ.close();
 			
 		return null;
 		
 		}catch(Exception e){
 			return e.toString();
 		}
-		finally{
-			
-			if(ts!=null)
-				ts.close();
-			
-			if(esClient!=null)
-				esClient.close();
-			
-		}
+		
 	}
 	
 	
-	private static Map<String,Object> collectFeatures(String jsonWebPage){
+	public static Map<String,Object> collectFeatures(String jsonWebPage){
 		
 		//AS per our current standards, should be a JSON object
 		JSONObject jSource = (JSONObject) JSONSerializer.toJSON(jsonWebPage);
@@ -199,7 +239,7 @@ public class ElasticSearchHandler {
 	
 	public static String FindSimilar(String uri,String sendBack,String differentIndex){
 		
-		try{
+/*		try{
 			String searchSourceJson = PerformSimpleSearch(uri,differentIndex);
 			
 			Map<String,Object> mapSourceFeatures = new HashMap<String, Object>();
@@ -420,7 +460,7 @@ public class ElasticSearchHandler {
 			if(esClient!=null)
 				esClient.close();
 			
-		}
+		}*/ return null;
 	}
 
 	
@@ -481,7 +521,6 @@ public class ElasticSearchHandler {
 							jObjFeatureObject.remove(IMAGE_OBJECT_URI_RANKS);
 						}
 						
-						//LOG.info("SIZE NOW:"+jArrayImageURIs.size());
 						Object ObjImagePart = source.get(HAS_IMAGE_PART);
 						
 						if(ObjImagePart instanceof JSONArray){
@@ -537,7 +576,6 @@ public class ElasticSearchHandler {
 			}
 			
 		}
-		//LOG.info(source.toString());
 		return source;
 	}
 	
@@ -560,7 +598,6 @@ public class ElasticSearchHandler {
 		
 		if(objImagePart instanceof JSONArray) {
 			
-			//JSONArray jArrayImagePart = source.getJSONArray(HAS_IMAGE_PART);//guaranteed to be in there
 			JSONArray jArrayImagePart = (JSONArray) objImagePart;//guaranteed to be in there
 			
 			for(int i=0;i<jArrayImagePart.size();i++){
@@ -597,10 +634,15 @@ public class ElasticSearchHandler {
 				if(jObjImagePart.getString(CACHE_URL).equals(matchedImage.getImageURL())){
 					
 					JSONArray jArrayImageURIs = new JSONArray();
+					JSONArray jArrayOnlyURIs = new JSONArray();
+					
 					jArrayImageURIs.add(addImageRank(jObjImagePart.getString(URI), matchedImage.getRank()));
+					jArrayOnlyURIs.add(jObjImagePart.getString(URI));
+					
 					
 					JSONObject jObjFeatureObject = new JSONObject();
 					jObjFeatureObject.accumulate(IMAGE_OBJECT_URI_RANKS, jArrayImageURIs);
+					jObjFeatureObject.accumulate(IMAGE_OBJECT_URIS, jArrayOnlyURIs);
 					
 					jObjReturn.accumulate(FEATURE_OBJECT, jObjFeatureObject);
 					
@@ -622,11 +664,11 @@ public class ElasticSearchHandler {
 	}
 	
 	
-	public static JSONObject UpdateWebPagesWithSimilarImages(ArrayList<ImageRank> jArray,String queryURI,String differentIndex) throws Exception{
+	public static String UpdateWebPagesWithSimilarImages(ArrayList<ImageRank> jArray,String queryURI,String differentIndex) throws Exception{
+		CloseableHttpClient httpClientBulk=null;
 		try{
-			Initialize();
-			JSONObject jResults = new JSONObject();
 			
+			Initialize();
 			String indexToUse = null;
 			
 			if(differentIndex != null){
@@ -637,71 +679,54 @@ public class ElasticSearchHandler {
 				indexToUse = indexName;
 			}
 			
-			System.out.println("start time:" + new Date().toString());
 			
+			StringBuilder bulkUpdate = new StringBuilder();
 			
-			BulkRequestBuilder bulkRB = new BulkRequestBuilder(esClient);
-			
-			
+			ExecutorService termQueryExecutor = Executors.newFixedThreadPool(Math.min(50, jArray.size()));
+			List<Future<String>> results = new LinkedList<Future<String>>();
 			for(int i=0;i<jArray.size();i++){
 				
 				
-				TermQueryBuilder termQB = QueryBuilders.termQuery(IMAGE_CACHE_URL, jArray.get(i).getImageURL());
-					
-					
-				SearchResponse searchResp = esClient.prepareSearch(indexToUse)
-													.setTypes(docType)
-													.setQuery(termQB)
-													.execute()
-													.actionGet();
-					
-				SearchHit[] searchHit = searchResp.getHits().getHits();
-				
-				for(SearchHit hit : searchHit){
-					
-//					LOG.debug("Ads id: "+ hit.getId());
-					
-					String docId = hit.getId();
-					
-					JSONObject jUpdatedSource = addSimilarImagesFeature((JSONObject) JSONSerializer.toJSON(hit.getSourceAsString()),
-							                                            queryURI,
-							                                            jArray.get(i));
-					
-					UpdateRequest updateRequest = new UpdateRequest();
-					updateRequest.index(indexToUse);
-					updateRequest.type(docType);
-					updateRequest.id(docId);
-					updateRequest.doc(jUpdatedSource);
-					
-					bulkRB.add(updateRequest);
-					//esClient.update(updateRequest).get();
-					
-					
-					jResults.accumulate("ad_uri", "http://" + 
-												   elasticsearchHost + ":" + 
-												   returnPort + "/" +
-												   indexToUse + "/" + 
-												   docType + "/" + 
-												   docId);
-				}
-				
+				results.add(termQueryExecutor.submit(new TermQueryWorker(jArray.get(i), indexToUse, queryURI)));
 			}
 			
-			bulkRB.execute().actionGet();
-			System.out.println("end time:" + new Date().toString());
-			return jResults;
+			for(Future<String> result: results)
+			{
+				String value = result.get(30, TimeUnit.SECONDS);
+				bulkUpdate.append(value);
+			}
+			
+			HttpPost httpPost = new HttpPost(elasticsearchProtocol + "://" + elasticsearchHost + ":" + elasticsearchPort + "/_bulk");
+			
+			
+			StringEntity entity = new StringEntity(bulkUpdate.toString(),"UTF-8");
+			entity.setContentType("application/json");
+			httpPost.setEntity(entity);
+			
+			
+			
+			if(sslsf != null && credsProvider != null){
+				httpClientBulk = HttpClients.custom().setSSLSocketFactory(sslsf)
+												   .setDefaultCredentialsProvider(credsProvider)
+												   .build();
+			}
+			else{
+				httpClientBulk = HttpClients.createDefault();
+			}
+
+			HttpResponse httpResp = httpClientBulk.execute(httpPost);
+			
+			
+			return EntityUtils.toString(httpResp.getEntity());
 		
 		}catch(Exception e){
 			throw e;
 		}
 		finally{
-			
-			if(ts!=null)
-				ts.close();
-			
-			if(esClient!=null)
-				esClient.close();
-			
+			if(httpClientBulk != null)
+				httpClientBulk.close();
 		}
+
 	}
+	
 }
