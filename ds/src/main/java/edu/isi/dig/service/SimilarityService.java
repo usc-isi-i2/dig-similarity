@@ -134,9 +134,9 @@ public static void Initialize(){
 		
 		
 		if(!imageSimilarityPort.equals("-1")){//if port is specified, in other words not 80
-			 httpGet = new HttpGet(imageSimilarityProtocol+"://" + imageSimilarityHost + ":" + imageSimilarityPort+"/getSimilar.php?url="+uri+"&fast=1");
+			 httpGet = new HttpGet(imageSimilarityProtocol+"://" + imageSimilarityHost + ":" + imageSimilarityPort+"/ColumbiaUimgSearch.php?url="+uri+"&fast=1");
 		}else{
-			httpGet = new HttpGet(imageSimilarityProtocol+"://"+ imageSimilarityHost + "/getSimilar.php?url="+uri+"&fast=1");
+			httpGet = new HttpGet(imageSimilarityProtocol+"://"+ imageSimilarityHost + "/ColumbiaUimgSearch.php?url="+uri+"&fast=1");
 		}
 		
 		CloseableHttpResponse httpResponse = httpclient.execute(httpGet);

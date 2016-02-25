@@ -38,6 +38,7 @@ import org.elasticsearch.common.settings.Settings;
 //import org.slf4j.Logger;
 //import org.slf4j.LoggerFactory;
 
+
 import edu.isi.dig.service.SimilarityService.ImageRank;
 
 
@@ -703,7 +704,10 @@ public class ElasticSearchHandler {
 			entity.setContentType("application/json");
 			httpPost.setEntity(entity);
 			
-			
+			/*PrintWriter writer = new PrintWriter("/tmp/testbulk", "UTF-8");
+			writer.println(bulkUpdate.toString());
+			writer.println("\n");
+			writer.close();*/
 			
 			if(sslsf != null && credsProvider != null){
 				httpClientBulk = HttpClients.custom().setSSLSocketFactory(sslsf)
