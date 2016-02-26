@@ -1,0 +1,6 @@
+
+
+docker pull memex/isi:3.2 (or the latest version)
+#make changes to the code, compile and create the war file
+docker build -t memex/isi:3.3 . (or the latest + 1 version)
+docker push memex/isi:3.3
